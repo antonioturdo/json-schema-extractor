@@ -1,0 +1,7 @@
+/.github export-ignore
+/bin export-ignore
+/docs export-ignore
+/tests export-ignore
+/phpstan.neon.dist export-ignore
+/phpunit.xml export-ignore
+/ROADMAP.md export-ignore

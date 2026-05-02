@@ -1,0 +1,43 @@
+{
+    "name": "antonioturdo/json-schema-generator",
+    "description": "A modular, decoupled JSON Schema generator for PHP 8.1+",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "phpdocumentor/reflection-docblock": "^5.3",
+        "phpstan/phpdoc-parser": "^2.0",
+        "symfony/property-info": "^6.4",
+        "symfony/error-handler": "^6.4",
+        "symfony/serializer": "^6.4",
+        "symfony/validator": "^6.4",
+        "phpstan/phpstan": "^2.1",
+        "friendsofphp/php-cs-fixer": "^3.95",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "symfony/translation-contracts": "^3.6",
+        "symfony/uid": "^6.4"
+    },
+    "suggest": {
+        "phpdocumentor/reflection-docblock": "Allows extracting types and descriptions from DocBlocks using PhpDocumentorEnricher",
+        "phpstan/phpdoc-parser": "Advanced PHPDoc parsing for shaped arrays and complex generics using PhpStanEnricher",
+        "symfony/property-info": "Allows extracting types and descriptions using SymfonyPhpDocPropertyEnricher",
+        "symfony/error-handler": "Allows SerializerPropertyEnricher to map FlattenException values like Symfony's ProblemNormalizer",
+        "symfony/serializer": "Allows using #[SerializedName] and NameConverters with SerializerPropertyEnricher",
+        "symfony/translation-contracts": "Allows SerializerPropertyEnricher to map TranslatableInterface values like Symfony's TranslatableNormalizer",
+        "symfony/uid": "Allows SerializerPropertyEnricher to map Symfony Uuid/Ulid values like Symfony's UidNormalizer",
+        "symfony/validator": "Allows extracting JSON Schema constraints from Symfony Validation attributes"
+    },
+    "autoload": {
+        "psr-4": {
+            "Zeusi\\JsonSchemaGenerator\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Zeusi\\JsonSchemaGenerator\\Tests\\": "tests/"
+        }
+    }
+}
