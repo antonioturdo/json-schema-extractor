@@ -5,7 +5,7 @@
 [![PHPUnit](https://img.shields.io/badge/phpunit-10.5-366488.svg)](https://phpunit.de/)
 [![PHPStan](https://img.shields.io/badge/phpstan-level%208-brightgreen.svg)](https://phpstan.org/)
 
-> JSON Schema Extractor builds JSON Schema documents from PHP DTOs through a modular pipeline of discovery, enrichment, serialization projection, and schema mapping.
+> JSON Schema Extractor generates JSON Schema documents from PHP DTOs by extracting native types, PHPDoc, validation constraints, and serialization metadata through a modular pipeline.
 
 Typical use cases include:
 

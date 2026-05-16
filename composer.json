@@ -1,6 +1,17 @@
 {
     "name": "zeusi/json-schema-extractor",
-    "description": "A modular, decoupled JSON Schema extractor for PHP 8.1+",
+    "description": "Modular JSON Schema generator for PHP DTOs, extracting native types, PHPDoc, validation constraints, and serialization metadata",
+    "keywords": [
+        "json-schema",
+        "async-api",
+        "schema",
+        "dto",
+        "phpdoc",
+        "symfony-validator",
+        "symfony-serializer",
+        "structured-output",
+        "llm"
+    ],
     "type": "library",
     "license": "MIT",
     "require": {
