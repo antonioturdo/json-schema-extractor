@@ -334,10 +334,10 @@ $rows = [
         },
     ],
     [
-        'property' => 'settings',
+        'property' => 'favoritePerformance',
         'annotation' => '@var array{...} (shaped array)',
         'eval' => static function (ClassDefinition $definition): string {
-            $shape = inlineObjectShape(propertyOf($definition, 'settings')->getType() ?? new BuiltinType('mixed'));
+            $shape = inlineObjectShape(propertyOf($definition, 'favoritePerformance')->getType() ?? new BuiltinType('mixed'));
             if ($shape === null) {
                 return 'No';
             }

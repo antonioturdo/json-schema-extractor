@@ -132,8 +132,8 @@ class SchemaExtractorTest extends TestCase
         self::assertSame('string', $schema['definitions']['StatusEnum']['type']);
         self::assertSame(['active', 'inactive'], $schema['definitions']['StatusEnum']['enum']);
         self::assertSame('#/definitions/StatusEnum', $schema['properties']['mixedTags']['items']['anyOf'][0]['$ref']);
-        self::assertSame('object', $schema['properties']['settings']['type']);
-        self::assertArrayNotHasKey('$ref', $schema['properties']['settings']);
+        self::assertSame('object', $schema['properties']['favoritePerformance']['type']);
+        self::assertArrayNotHasKey('$ref', $schema['properties']['favoritePerformance']);
     }
 
     /**

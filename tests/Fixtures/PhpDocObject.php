@@ -23,8 +23,8 @@ class PhpDocObject
     public int $id;
 
     /**
-     * @example "Park"
-     * @example "Eun-bin"
+     * @example "Park Eun-bin"
+     * @example "박은빈"
      */
     public string $name;
 
@@ -48,9 +48,14 @@ class PhpDocObject
     public array $headers = [];
 
     /**
-     * @var array{id: int, name: string, tags?: string[]}
+     * @var array{title: string, role: string, year: int, tags?: string[]}
      */
-    public array $settings;
+    public array $favoritePerformance = [
+        'title' => 'Extraordinary Attorney Woo',
+        'role' => 'Woo Young-woo',
+        'year' => 2022,
+        'tags' => ['k-drama'],
+    ];
 
     /**
      * @var array<array{url: string, active: bool}>
@@ -58,7 +63,7 @@ class PhpDocObject
     public array $endpoints;
 
     /** @var positive-int */
-    public int $positive;
+    public int $birthYear = 1992;
 
     /** @var negative-int */
     public int $negative;

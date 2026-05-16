@@ -45,7 +45,7 @@ class PhpStanEnricherTest extends TestCase
         $nameDecorated = $this->findFirstNonNullDecorated($nameExpr);
         self::assertNotNull($nameDecorated);
         self::assertNotNull($nameDecorated->annotations);
-        self::assertSame(['"Park"', '"Eun-bin"'], $nameDecorated->annotations->examples);
+        self::assertSame(['"Park Eun-bin"', '"박은빈"'], $nameDecorated->annotations->examples);
 
         $unionExpr = $this->requireType($this->requireProperty($definition, 'union')->getType(), 'Expected union to have a type.');
         $unionDecorated = $this->findFirstNonNullDecorated($unionExpr);
@@ -62,22 +62,26 @@ class PhpStanEnricherTest extends TestCase
 
         $this->enricher->enrich($definition, new ExtractionContext(), new EnrichmentRuntime());
 
-        $property = $this->requireProperty($definition, 'settings');
-        $shape = $this->assertInlineObject($this->requireType($property->getType(), 'Expected settings to have a type.'));
+        $property = $this->requireProperty($definition, 'favoritePerformance');
+        $shape = $this->assertInlineObject($this->requireType($property->getType(), 'Expected favoritePerformance to have a type.'));
 
         // Check nested properties
         $properties = $shape->getProperties();
-        self::assertArrayHasKey('id', $properties);
-        self::assertArrayHasKey('name', $properties);
+        self::assertArrayHasKey('title', $properties);
+        self::assertArrayHasKey('role', $properties);
+        self::assertArrayHasKey('year', $properties);
         self::assertArrayHasKey('tags', $properties);
 
-        $this->assertBuiltin($this->requireType($properties['id']->getType(), 'Expected settings.id to have a type.'), 'int');
-        self::assertTrue($properties['id']->isRequired());
+        $this->assertBuiltin($this->requireType($properties['title']->getType(), 'Expected favoritePerformance.title to have a type.'), 'string');
+        self::assertTrue($properties['title']->isRequired());
 
-        $this->assertBuiltin($this->requireType($properties['name']->getType(), 'Expected settings.name to have a type.'), 'string');
-        self::assertTrue($properties['name']->isRequired());
+        $this->assertBuiltin($this->requireType($properties['role']->getType(), 'Expected favoritePerformance.role to have a type.'), 'string');
+        self::assertTrue($properties['role']->isRequired());
 
-        $this->assertArrayOf($this->requireType($properties['tags']->getType(), 'Expected settings.tags to have a type.'));
+        $this->assertBuiltin($this->requireType($properties['year']->getType(), 'Expected favoritePerformance.year to have a type.'), 'int');
+        self::assertTrue($properties['year']->isRequired());
+
+        $this->assertArrayOf($this->requireType($properties['tags']->getType(), 'Expected favoritePerformance.tags to have a type.'));
         self::assertFalse($properties['tags']->isRequired());
     }
 
@@ -121,17 +125,17 @@ class PhpStanEnricherTest extends TestCase
 
         $this->enricher->enrich($definition, new ExtractionContext(), new EnrichmentRuntime());
 
-        $positive = $this->findFirstNonNullDecorated($this->requireProperty($definition, 'positive')->getType());
+        $birthYear = $this->findFirstNonNullDecorated($this->requireProperty($definition, 'birthYear')->getType());
         $negative = $this->findFirstNonNullDecorated($this->requireProperty($definition, 'negative')->getType());
         $nonEmpty = $this->findFirstNonNullDecorated($this->requireProperty($definition, 'nonEmpty')->getType());
         $tags = $this->findFirstNonNullDecorated($this->requireProperty($definition, 'tags')->getType());
 
-        self::assertNotNull($positive);
+        self::assertNotNull($birthYear);
         self::assertNotNull($negative);
         self::assertNotNull($nonEmpty);
         self::assertNotNull($tags);
 
-        self::assertSame(1, $positive->constraints->minimum);
+        self::assertSame(1, $birthYear->constraints->minimum);
         self::assertSame(-1, $negative->constraints->maximum);
         self::assertSame(1, $nonEmpty->constraints->minLength);
         self::assertSame(1, $tags->constraints->minItems);

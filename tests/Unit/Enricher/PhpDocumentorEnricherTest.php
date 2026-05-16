@@ -63,7 +63,7 @@ class PhpDocumentorEnricherTest extends TestCase
         $nameDecorated = $this->findFirstNonNullDecorated($nameExpr);
         self::assertNotNull($nameDecorated);
         self::assertNotNull($nameDecorated->annotations);
-        self::assertSame(['"Park"', '"Eun-bin"'], $nameDecorated->annotations->examples);
+        self::assertSame(['"Park Eun-bin"', '"박은빈"'], $nameDecorated->annotations->examples);
 
         $unionExpr = $this->requireType($this->requireProperty($definition, 'union')->getType(), 'Expected union to have a type.');
         $unionDecorated = $this->findFirstNonNullDecorated($unionExpr);
@@ -111,14 +111,16 @@ class PhpDocumentorEnricherTest extends TestCase
         self::assertTrue($hasEnumBranch);
         self::assertTrue($hasString);
 
-        $settingsShape = $this->assertInlineObject($this->requireType($this->requireProperty($definition, 'settings')->getType(), 'Expected settings to have a type.'));
-        $settingsProperties = $settingsShape->getProperties();
+        $favoritePerformanceShape = $this->assertInlineObject($this->requireType($this->requireProperty($definition, 'favoritePerformance')->getType(), 'Expected favoritePerformance to have a type.'));
+        $favoritePerformanceProperties = $favoritePerformanceShape->getProperties();
 
-        self::assertTrue($settingsProperties['id']->isRequired());
-        self::assertTrue($settingsProperties['name']->isRequired());
-        self::assertFalse($settingsProperties['tags']->isRequired());
-        self::assertSame(['int'], $this->collectTypeNames($settingsProperties['id']->getType()));
-        self::assertSame(['string'], $this->collectTypeNames($settingsProperties['name']->getType()));
+        self::assertTrue($favoritePerformanceProperties['title']->isRequired());
+        self::assertTrue($favoritePerformanceProperties['role']->isRequired());
+        self::assertTrue($favoritePerformanceProperties['year']->isRequired());
+        self::assertFalse($favoritePerformanceProperties['tags']->isRequired());
+        self::assertSame(['string'], $this->collectTypeNames($favoritePerformanceProperties['title']->getType()));
+        self::assertSame(['string'], $this->collectTypeNames($favoritePerformanceProperties['role']->getType()));
+        self::assertSame(['int'], $this->collectTypeNames($favoritePerformanceProperties['year']->getType()));
     }
 
     public function testEnrichWithAdvancedDocTypes(): void
@@ -127,25 +129,25 @@ class PhpDocumentorEnricherTest extends TestCase
 
         $this->enricher->enrich($definition, new ExtractionContext(), new EnrichmentRuntime());
 
-        $positive = $this->requireType($this->requireProperty($definition, 'positive')->getType(), 'Expected positive to have a type.');
+        $birthYear = $this->requireType($this->requireProperty($definition, 'birthYear')->getType(), 'Expected birthYear to have a type.');
         $negative = $this->requireType($this->requireProperty($definition, 'negative')->getType(), 'Expected negative to have a type.');
         $range = $this->requireType($this->requireProperty($definition, 'range')->getType(), 'Expected range to have a type.');
         $nonEmpty = $this->requireType($this->requireProperty($definition, 'nonEmpty')->getType(), 'Expected nonEmpty to have a type.');
         $tags = $this->requireType($this->requireProperty($definition, 'tags')->getType(), 'Expected tags to have a type.');
 
-        $positiveDecorated = $this->findFirstNonNullDecorated($positive);
+        $birthYearDecorated = $this->findFirstNonNullDecorated($birthYear);
         $negativeDecorated = $this->findFirstNonNullDecorated($negative);
         $rangeDecorated = $this->findFirstNonNullDecorated($range);
         $nonEmptyDecorated = $this->findFirstNonNullDecorated($nonEmpty);
         $tagsDecorated = $this->findFirstNonNullDecorated($tags);
 
-        self::assertNotNull($positiveDecorated);
+        self::assertNotNull($birthYearDecorated);
         self::assertNotNull($negativeDecorated);
         self::assertNotNull($rangeDecorated);
         self::assertNotNull($nonEmptyDecorated);
         self::assertNotNull($tagsDecorated);
 
-        self::assertSame(1, $positiveDecorated->constraints->minimum);
+        self::assertSame(1, $birthYearDecorated->constraints->minimum);
         self::assertSame(-1, $negativeDecorated->constraints->maximum);
 
         // Assert IntegerRange
