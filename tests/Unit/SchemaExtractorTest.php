@@ -15,7 +15,7 @@ use Zeusi\JsonSchemaExtractor\Mapper\ClassReferenceStrategy;
 use Zeusi\JsonSchemaExtractor\Mapper\SchemaMapperInterface;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
-use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\SchemaExtractorOptions;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
@@ -312,7 +312,7 @@ final class RecursionProbeMapper implements SchemaMapperInterface
         private readonly string $recursiveClass
     ) {}
 
-    public function map(SerializedObjectDefinition $definition, callable $schemaProvider): Schema
+    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): Schema
     {
         ++$this->mapCalls;
 

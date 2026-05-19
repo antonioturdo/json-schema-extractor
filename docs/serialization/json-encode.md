@@ -10,7 +10,7 @@
 
 Use this strategy when your runtime payload is produced with PHP's native `json_encode()`.
 
-Classes that implement `JsonSerializable` are supported when `jsonSerialize()` has a discovered return type that can be projected as an object shape. In practice, this usually means adding PHPDoc such as `@return array{id: int, name: string}` and enabling a PHPDoc enricher before serialization projection.
+Classes that implement `JsonSerializable` are supported when `jsonSerialize()` has discovered return type metadata precise enough to describe the payload. This may be an object shape, a scalar, a list, or a dictionary type. In practice, object-like arrays usually need PHPDoc such as `@return array{id: int, name: string}` and a PHPDoc enricher before serialization projection.
 
 ## Context
 
@@ -37,12 +37,12 @@ This can be useful because JSON encoding flags can also affect the JSON Schema, 
 
 - Public properties are mapped without modification.
 - Maps `DateTimeInterface` to the object shape produced by PHP's native JSON serialization (`date`, `timezone_type`, `timezone`).
-- Uses the documented `jsonSerialize()` return shape as the root payload for `JsonSerializable` classes.
+- Uses the documented `jsonSerialize()` return type as the root payload for `JsonSerializable` classes.
 
 ## Limitations
 
 - `JsonSerializable` support is metadata-driven: the method body is never executed or analyzed.
-- If `jsonSerialize()` has no usable object-shape return metadata, the strategy throws a `LogicException` because it cannot infer the actual payload without executing the method.
+- If `jsonSerialize()` has no usable return metadata, the strategy throws a `LogicException` because it cannot infer the actual payload without executing the method. Bare `array`, `iterable`, `object`, and `mixed` return types are intentionally treated as too vague.
 
 ## Example
 

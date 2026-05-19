@@ -3,16 +3,16 @@
 namespace Zeusi\JsonSchemaExtractor\Mapper;
 
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
-use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 
 /**
- * Translates the serialized object definition into the final Schema object representing the JSON Schema.
+ * Translates the serialized payload definition into the final Schema object representing the JSON Schema.
  */
 interface SchemaMapperInterface
 {
     /**
-     * @param SerializedObjectDefinition $definition The serialized object definition
+     * @param SerializedPayloadDefinition $definition The serialized payload definition
      * @param callable(string): Schema $schemaProvider A callable to request the nested Schema of another class
      */
-    public function map(SerializedObjectDefinition $definition, callable $schemaProvider): Schema;
+    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): Schema;
 }

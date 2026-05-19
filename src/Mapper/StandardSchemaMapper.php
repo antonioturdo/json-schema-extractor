@@ -5,6 +5,7 @@ namespace Zeusi\JsonSchemaExtractor\Mapper;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\SchemaType;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
@@ -22,7 +23,7 @@ use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
 
 /**
- * The standard mapper that translates the serialized object definition into a Draft-7 JSON Schema array.
+ * The standard mapper that translates the serialized payload definition into a Draft-7 JSON Schema array.
  *
  * It uses the internal Schema object to easily build and compose the output.
  */
@@ -48,23 +49,18 @@ class StandardSchemaMapper implements SchemaMapperInterface
         private readonly ClassReferenceStrategy $classReferenceStrategy = ClassReferenceStrategy::Definitions
     ) {}
 
-    public function map(SerializedObjectDefinition $definition, callable $schemaProvider): Schema
+    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): Schema
     {
         $isRootMap = $this->mapDepth === 0;
         if ($isRootMap) {
-            $this->resetDefinitionsState($definition->name);
+            $this->resetDefinitionsState($this->extractRootObjectDefinition($definition->type)?->name);
         }
 
         $this->schemaProvider = $schemaProvider;
 
         ++$this->mapDepth;
         try {
-            $concreteClasses = $definition->concreteClasses;
-            if ($concreteClasses !== []) {
-                $schema = $this->mapConcreteClasses($concreteClasses);
-            } else {
-                $schema = $this->mapObjectShape($definition);
-            }
+            $schema = $this->mapType($definition->type);
         } finally {
             --$this->mapDepth;
         }
@@ -78,6 +74,19 @@ class StandardSchemaMapper implements SchemaMapperInterface
         }
 
         return $schema;
+    }
+
+    private function extractRootObjectDefinition(Type $type): ?SerializedObjectDefinition
+    {
+        if ($type instanceof SerializedObjectType) {
+            return $type->shape;
+        }
+
+        if ($type instanceof DecoratedType) {
+            return $this->extractRootObjectDefinition($type->type);
+        }
+
+        return null;
     }
 
     /**
@@ -170,6 +179,10 @@ class StandardSchemaMapper implements SchemaMapperInterface
         }
 
         if ($type instanceof SerializedObjectType) {
+            if ($type->shape->concreteClasses !== []) {
+                return $this->mapConcreteClasses($type->shape->concreteClasses);
+            }
+
             return $this->mapObjectShape($type->shape);
         }
 

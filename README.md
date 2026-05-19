@@ -161,7 +161,7 @@ To create a custom enricher implement [`EnricherInterface`](src/Enricher/Enriche
 
 ### Serialization Strategies
 
-Serialization strategies convert the enriched PHP model into the JSON-facing shape consumed by the mapper. They are the right place for output field names, omitted fields, discriminator fields, and serializer-specific normalized types.
+Serialization strategies convert the enriched PHP model into the JSON-facing payload consumed by the mapper. They are the right place for output field names, omitted fields, discriminator fields, root payload changes, and serializer-specific normalized types.
 
 | Component                         | Use it when                                                                                                                      | Documentation                                                                          |
 |:----------------------------------|:---------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------|
@@ -172,7 +172,7 @@ To create a custom serialization strategy implement [`SerializationStrategyInter
 
 ### Mapper
 
-[`StandardSchemaMapper`](src/Mapper/StandardSchemaMapper.php) is the default and currently only mapper. It converts the serialized model to Draft-7 JSON Schema.
+[`StandardSchemaMapper`](src/Mapper/StandardSchemaMapper.php) is the default and currently only mapper. It converts the serialized payload model to Draft-7 JSON Schema.
 By default, class-backed DTOs and enums are collected under `definitions` and referenced with `$ref`.
 If you prefer those schemas to be expanded at the usage site, configure the mapper with the inline class reference strategy.
 

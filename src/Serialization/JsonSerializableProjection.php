@@ -4,16 +4,21 @@ namespace Zeusi\JsonSchemaExtractor\Serialization;
 
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
+use Zeusi\JsonSchemaExtractor\Model\Type\IntersectionType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
+use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
+use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
 
 final class JsonSerializableProjection
 {
     /**
      * @param callable(?Type): ?Type $typeProjector
      */
-    public static function project(ClassDefinition $definition, callable $typeProjector): ?SerializedObjectDefinition
+    public static function project(ClassDefinition $definition, callable $typeProjector): ?SerializedPayloadDefinition
     {
         $className = $definition->getClassName();
         if (!class_exists($className) || !is_subclass_of($className, \JsonSerializable::class)) {
@@ -28,35 +33,67 @@ final class JsonSerializableProjection
             ));
         }
 
-        $projectedShape = self::extractSerializedObjectShape($typeProjector($jsonSerialize->getReturnType()));
-        if ($projectedShape === null) {
+        $projectedType = $typeProjector($jsonSerialize->getReturnType());
+        if ($projectedType === null || !self::isUsableRootType($projectedType)) {
             throw new \LogicException(\sprintf(
-                'Cannot project JsonSerializable class "%s": jsonSerialize() return type metadata must describe an object shape.',
+                'Cannot project JsonSerializable class "%s": jsonSerialize() return type metadata is not usable.',
                 $className
             ));
         }
 
-        return new SerializedObjectDefinition(
-            name: $definition->getClassName(),
-            properties: $projectedShape->properties,
-            title: $definition->getTitle() ?? $projectedShape->title,
-            description: $definition->getDescription() ?? $projectedShape->description,
-            additionalProperties: $projectedShape->additionalProperties
-        );
+        return new SerializedPayloadDefinition(self::applyRootObjectMetadata($projectedType, $definition));
     }
 
-    private static function extractSerializedObjectShape(?Type $type): ?SerializedObjectDefinition
+    private static function isUsableRootType(Type $type): bool
+    {
+        if ($type instanceof DecoratedType) {
+            return self::isUsableRootType($type->type);
+        }
+
+        if ($type instanceof UnknownType) {
+            return false;
+        }
+
+        if ($type instanceof UnionType || $type instanceof IntersectionType) {
+            foreach ($type->types as $innerType) {
+                if (!self::isUsableRootType($innerType)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if ($type instanceof BuiltinType) {
+            return !\in_array($type->name, ['array', 'iterable', 'object', 'mixed'], true);
+        }
+
+        return true;
+    }
+
+    private static function applyRootObjectMetadata(Type $type, ClassDefinition $definition): Type
     {
         if ($type instanceof SerializedObjectType) {
-            return $type->shape;
+            $shape = $type->shape;
+
+            return new SerializedObjectType(new SerializedObjectDefinition(
+                name: $definition->getClassName(),
+                properties: $shape->properties,
+                title: $definition->getTitle() ?? $shape->title,
+                description: $definition->getDescription() ?? $shape->description,
+                additionalProperties: $shape->additionalProperties,
+                concreteClasses: $shape->concreteClasses
+            ));
         }
 
         if ($type instanceof DecoratedType) {
-            // Root object decorations do not have a dedicated representation on SerializedObjectDefinition yet.
-            // Keep the object payload shape and intentionally drop wrapper-level constraints/annotations.
-            return self::extractSerializedObjectShape($type->type);
+            return new DecoratedType(
+                self::applyRootObjectMetadata($type->type, $definition),
+                $type->constraints,
+                $type->annotations
+            );
         }
 
-        return null;
+        return $type;
     }
 }

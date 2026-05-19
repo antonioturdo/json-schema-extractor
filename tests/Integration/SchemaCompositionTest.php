@@ -20,7 +20,12 @@ use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CollectionValidatedObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ConflictingCollectionValidatedObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializableClassUnionPhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializableListPhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializableMapPhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializableNonEmptyStringPhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializableStringObject;
 
 #[CoversClass(SchemaExtractor::class)]
 class SchemaCompositionTest extends TestCase
@@ -144,5 +149,96 @@ class SchemaCompositionTest extends TestCase
         self::assertArrayNotHasKey('internal', $schema['properties']);
         self::assertSame('integer', $schema['properties']['id']['type']);
         self::assertSame('string', $schema['properties']['name']['type']);
+    }
+
+    public function testGenerateUsesJsonSerializableClassUnionReturnType(): void
+    {
+        $extractor = new SchemaExtractor(
+            new ReflectionDiscoverer(),
+            [new PhpStanEnricher()],
+            new JsonEncodeSerializationStrategy(),
+            new StandardSchemaMapper()
+        );
+
+        $schema = $extractor->extract(JsonSerializableClassUnionPhpDocObject::class);
+        self::assertIsArray($schema);
+        /** @var array<string, mixed> $schema */
+
+        self::assertSame('#/definitions/BasicObject', $schema['anyOf'][0]['$ref']);
+        self::assertSame('string', $schema['anyOf'][1]['type']);
+        self::assertSame('object', $schema['definitions']['BasicObject']['type']);
+    }
+
+    /**
+     * @param class-string $className
+     * @param list<EnricherInterface> $enrichers
+     * @param array<string, mixed> $expectedSchema
+     */
+    #[DataProvider('jsonSerializableNonObjectPayloadProvider')]
+    public function testGenerateUsesJsonSerializableNonObjectReturnTypes(string $className, array $enrichers, array $expectedSchema): void
+    {
+        $extractor = new SchemaExtractor(
+            new ReflectionDiscoverer(),
+            $enrichers,
+            new JsonEncodeSerializationStrategy(),
+            new StandardSchemaMapper()
+        );
+
+        $schema = $extractor->extract($className);
+        self::assertIsArray($schema);
+        /** @var array<string, mixed> $schema */
+
+        self::assertSchemaContains($expectedSchema, $schema);
+        self::assertArrayNotHasKey('properties', $schema);
+    }
+
+    /**
+     * @return iterable<string, array{class-string, list<EnricherInterface>, array<string, mixed>}>
+     */
+    public static function jsonSerializableNonObjectPayloadProvider(): iterable
+    {
+        yield 'native scalar' => [
+            JsonSerializableStringObject::class,
+            [],
+            ['type' => 'string'],
+        ];
+
+        yield 'phpdoc list' => [
+            JsonSerializableListPhpDocObject::class,
+            [new PhpStanEnricher()],
+            ['type' => 'array', 'items' => ['type' => 'string']],
+        ];
+
+        yield 'phpdoc map' => [
+            JsonSerializableMapPhpDocObject::class,
+            [new PhpStanEnricher()],
+            ['type' => 'object', 'additionalProperties' => ['type' => 'integer']],
+        ];
+
+        yield 'phpdoc decorated scalar' => [
+            JsonSerializableNonEmptyStringPhpDocObject::class,
+            [new PhpStanEnricher()],
+            ['type' => 'string', 'minLength' => 1],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $expected
+     * @param array<string, mixed> $actual
+     */
+    private static function assertSchemaContains(array $expected, array $actual): void
+    {
+        foreach ($expected as $key => $expectedValue) {
+            self::assertArrayHasKey($key, $actual);
+            if (\is_array($expectedValue)) {
+                self::assertIsArray($actual[$key]);
+                /** @var array<string, mixed> $actualValue */
+                $actualValue = $actual[$key];
+                self::assertSchemaContains($expectedValue, $actualValue);
+                continue;
+            }
+
+            self::assertSame($expectedValue, $actual[$key]);
+        }
     }
 }
