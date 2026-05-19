@@ -40,6 +40,8 @@ $schema = $extractor->extract(Event::class, $context);
 
 The context should mirror the normalization context used by your Symfony Serializer at runtime. The strategy does not run the serializer, but it uses the same context keys where they affect the serialized shape.
 
+Known normalizer mappings assume a standard Symfony Serializer setup where the corresponding normalizers are enabled. The strategy does not inspect the actual `Serializer` service or its configured normalizer chain, so removed, reordered, or custom normalizers may produce runtime payloads that differ from the generated schema.
+
 ### Groups
 
 `AbstractNormalizer::GROUPS` controls which properties are projected into the serialized model.
@@ -121,10 +123,19 @@ new SymfonySerializerContext([
 
 Defaults are round-tripped through `json_encode()` / `json_decode()` using these options so the JSON Schema default matches the JSON value produced by the configured Symfony Serializer. This is especially visible for empty arrays: with `JSON_FORCE_OBJECT`, an empty array default is represented as an empty JSON object.
 
+### `JsonSerializable`
+
+For classes that implement `JsonSerializable`, the strategy follows Symfony's `JsonSerializableNormalizer` behavior when the discovered `jsonSerialize()` return type can be projected as an object shape.
+
+This support is metadata-driven: `jsonSerialize()` is not executed and its method body is not analyzed. Use PHPDoc return metadata, such as `@return array{id: int, name: string}`, together with a PHPDoc enricher to describe the serialized payload shape.
+
+When a usable `jsonSerialize()` return shape is available, it is treated as the root serialized object and the normal property projection is skipped. If no usable return shape is available, the strategy throws a `LogicException` because it cannot infer the actual `JsonSerializable` payload without executing the method.
+
 ## What it reads
 
 - Symfony serializer class/property metadata.
 - Optional `SymfonySerializerContext` (e.g. groups, skip-null policy).
+- `JsonSerializable::jsonSerialize()` return metadata when available.
 - Known normalizer/discriminator behaviors.
 
 ## Projection behavior
@@ -146,13 +157,13 @@ Defaults are round-tripped through `json_encode()` / `json_decode()` using these
 | Symfony UID normalization | `type: string`, `format: uuid` where applicable | Base32/Base58 remain plain string. |
 | `TranslatableInterface` normalization | `type: string` | Locale changes value, not shape. |
 | Data URI file normalization | `type: string`, pattern `^data:` | Matches `DataUriNormalizer`. |
+| `JsonSerializable` normalization | shape declared by `jsonSerialize()` return PHPDoc | Used when the discovered method return type can be projected as an object shape. |
 | `ConstraintViolationListInterface` normalization | RFC 7807-like object shape | Requires relevant Symfony components installed. |
 | `FlattenException` normalization | RFC 7807-like problem object shape | Requires relevant Symfony components installed. |
 | Class discriminator mapping | discriminator field + `oneOf` concrete classes | Base/interface schemas resolve through configured map. |
 
 ## Limitations
 
-- `JsonSerializableNormalizer` behavior is not reflected in the resulting JSON schema.
 - Runtime-dependent serializer customizations outside known mappings are not handled, for example:
   - custom normalizers
 

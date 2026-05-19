@@ -9,6 +9,7 @@ use Zeusi\JsonSchemaExtractor\Context\JsonEncodeContext;
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineFieldDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
@@ -21,9 +22,13 @@ use Zeusi\JsonSchemaExtractor\Model\Type\TypeAnnotations;
 use Zeusi\JsonSchemaExtractor\Model\Type\Types;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
+use Zeusi\JsonSchemaExtractor\Serialization\JsonSerializableProjection;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\BasicObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
 
 #[CoversClass(JsonEncodeSerializationStrategy::class)]
+#[CoversClass(JsonSerializableProjection::class)]
 final class JsonEncodeSerializationStrategyTest extends TestCase
 {
     use TypeTestHelperTrait;
@@ -113,6 +118,75 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         );
 
         $this->assertBuiltin($eventsType->types[1], 'null');
+    }
+
+    public function testProjectUsesJsonSerializeReturnShapeWhenAvailable(): void
+    {
+        $definition = new ClassDefinition(
+            className: JsonSerializablePhpDocObject::class,
+            title: 'Payload',
+            description: 'Serialized payload'
+        );
+
+        $internal = new PropertyDefinition('internal');
+        $internal->setType(Types::string());
+        $definition->addProperty($internal);
+
+        $shape = new InlineObjectDefinition(id: JsonSerializablePhpDocObject::class . '::jsonSerialize() return');
+        $id = new InlineFieldDefinition('id', required: true);
+        $id->setType(Types::int());
+        $shape->addProperty($id);
+
+        $name = new InlineFieldDefinition('name', required: true);
+        $name->setType(Types::string());
+        $shape->addProperty($name);
+
+        $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
+
+        $projected = (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
+
+        self::assertSame(JsonSerializablePhpDocObject::class, $projected->name);
+        self::assertSame('Payload', $projected->title);
+        self::assertSame('Serialized payload', $projected->description);
+        self::assertSame([], $projected->concreteClasses);
+        self::assertArrayNotHasKey('internal', $projected->properties);
+
+        $idProperty = $this->requireSerializedProperty($projected, 'id');
+        self::assertTrue($idProperty->required);
+        $this->assertBuiltin($this->requireType($idProperty->type, 'Expected id to have a type.'), 'int');
+
+        $nameProperty = $this->requireSerializedProperty($projected, 'name');
+        self::assertTrue($nameProperty->required);
+        $this->assertBuiltin($this->requireType($nameProperty->type, 'Expected name to have a type.'), 'string');
+    }
+
+    public function testProjectIgnoresJsonSerializeMethodWhenClassDoesNotImplementInterface(): void
+    {
+        $definition = new ClassDefinition(className: BasicObject::class);
+
+        $internal = new PropertyDefinition('internal');
+        $internal->setType(Types::string());
+        $definition->addProperty($internal);
+
+        $shape = new InlineObjectDefinition(id: BasicObject::class . '::jsonSerialize() return');
+        $id = new InlineFieldDefinition('id', required: true);
+        $id->setType(Types::int());
+        $shape->addProperty($id);
+        $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
+
+        $projected = (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
+
+        self::assertArrayHasKey('internal', $projected->properties);
+        self::assertArrayNotHasKey('id', $projected->properties);
+    }
+
+    public function testProjectFailsWhenJsonSerializableReturnShapeIsMissing(): void
+    {
+        $definition = new ClassDefinition(className: JsonSerializablePhpDocObject::class);
+
+        $this->expectException(\LogicException::class);
+
+        (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
     }
 
     private function assertDateTimeShape(SerializedPropertyDefinition $property): void

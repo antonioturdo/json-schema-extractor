@@ -32,7 +32,6 @@ use PHPStan\PhpDocParser\ParserConfig;
 use Zeusi\JsonSchemaExtractor\Context\ExtractionContext;
 use Zeusi\JsonSchemaExtractor\Enricher\Runtime\EnrichmentRuntime;
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
-use Zeusi\JsonSchemaExtractor\Model\Php\FieldDefinitionInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineFieldDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
@@ -75,6 +74,7 @@ class PhpStanEnricher implements EnricherInterface
         $reflectionClass = new \ReflectionClass($className);
 
         $this->enrichPromotedPropertiesFromConstructorParams($definition, $reflectionClass, $runtime);
+        $this->enrichMethods($definition, $reflectionClass, $runtime);
 
         foreach ($definition->getProperties() as $property) {
             if (!$reflectionClass->hasProperty($property->getName())) {
@@ -94,7 +94,7 @@ class PhpStanEnricher implements EnricherInterface
             // Prefer building Type from the phpdoc-parser AST (supports intersections and parentheses).
             $type = null;
             foreach ($phpDocNode->getVarTagValues() as $varTag) {
-                $expr = $this->mapTypeNodeToType($varTag->type, $reflectionClass, $property);
+                $expr = $this->mapTypeNodeToType($varTag->type, $reflectionClass, $property->getName());
                 $type = $this->mergeVarTypes($type, $expr);
             }
 
@@ -126,6 +126,36 @@ class PhpStanEnricher implements EnricherInterface
             if ($text !== '') {
                 $runtime->fieldDefinitionUpdater->applyDescription($property, $text);
             }
+        }
+    }
+
+    /**
+     * @param \ReflectionClass<object> $reflectionClass
+     */
+    private function enrichMethods(ClassDefinition $definition, \ReflectionClass $reflectionClass, EnrichmentRuntime $runtime): void
+    {
+        foreach ($definition->getMethods() as $methodName => $methodDefinition) {
+            if (!$reflectionClass->hasMethod($methodName)) {
+                continue;
+            }
+
+            $docComment = $reflectionClass->getMethod($methodName)->getDocComment();
+            if ($docComment === false || $docComment === '') {
+                continue;
+            }
+
+            $tokens = new TokenIterator($this->lexer->tokenize($docComment));
+            $phpDocNode = $this->parser->parse($tokens);
+
+            $returnTags = $phpDocNode->getReturnTagValues();
+            if (\count($returnTags) !== 1) {
+                continue;
+            }
+
+            $runtime->methodDefinitionUpdater->applyCompatibleDeclaredReturnType(
+                $methodDefinition,
+                $this->mapTypeNodeToType($returnTags[0]->type, $reflectionClass, $methodName . '() return')
+            );
         }
     }
 
@@ -171,7 +201,7 @@ class PhpStanEnricher implements EnricherInterface
 
             $runtime->fieldDefinitionUpdater->applyCompatibleDeclaredType(
                 $property,
-                $this->mapTypeNodeToType($paramTag->type, $reflectionClass, $property)
+                $this->mapTypeNodeToType($paramTag->type, $reflectionClass, $parameterName)
             );
         }
     }
@@ -184,11 +214,11 @@ class PhpStanEnricher implements EnricherInterface
      *
      * @param \ReflectionClass<object> $context
      */
-    private function mapTypeNodeToType(TypeNode $typeNode, \ReflectionClass $context, FieldDefinitionInterface $property): Type
+    private function mapTypeNodeToType(TypeNode $typeNode, \ReflectionClass $context, string $typeContextName): Type
     {
         if ($typeNode instanceof NullableTypeNode) {
             return TypeUtils::normalizeUnion([
-                $this->mapTypeNodeToType($typeNode->type, $context, $property),
+                $this->mapTypeNodeToType($typeNode->type, $context, $typeContextName),
                 new BuiltinType('null'),
             ]);
         }
@@ -200,7 +230,7 @@ class PhpStanEnricher implements EnricherInterface
         if ($typeNode instanceof UnionTypeNode) {
             $types = [];
             foreach ($typeNode->types as $innerNode) {
-                $types[] = $this->mapTypeNodeToType($innerNode, $context, $property);
+                $types[] = $this->mapTypeNodeToType($innerNode, $context, $typeContextName);
             }
             return TypeUtils::normalizeUnion($types);
         }
@@ -208,25 +238,25 @@ class PhpStanEnricher implements EnricherInterface
         if ($typeNode instanceof IntersectionTypeNode) {
             $types = [];
             foreach ($typeNode->types as $innerNode) {
-                $types[] = $this->mapTypeNodeToType($innerNode, $context, $property);
+                $types[] = $this->mapTypeNodeToType($innerNode, $context, $typeContextName);
             }
             return new IntersectionType($types);
         }
 
         if ($typeNode instanceof GenericTypeNode) {
-            return $this->mapGenericToExpr($typeNode, $context, $property);
+            return $this->mapGenericToExpr($typeNode, $context, $typeContextName);
         }
 
         if ($typeNode instanceof ArrayShapeNode) {
-            return $this->mapArrayShapeToExpr($typeNode, $context, $property);
+            return $this->mapArrayShapeToExpr($typeNode, $context, $typeContextName);
         }
 
         if ($typeNode instanceof ArrayTypeNode) {
-            return new ArrayType($this->mapTypeNodeToType($typeNode->type, $context, $property));
+            return new ArrayType($this->mapTypeNodeToType($typeNode->type, $context, $typeContextName));
         }
 
         if ($typeNode instanceof ObjectShapeNode) {
-            return $this->mapObjectShapeToExpr($typeNode, $context, $property);
+            return $this->mapObjectShapeToExpr($typeNode, $context, $typeContextName);
         }
 
         if ($typeNode instanceof ThisTypeNode) {
@@ -359,7 +389,7 @@ class PhpStanEnricher implements EnricherInterface
     /**
      * @param \ReflectionClass<object> $context
      */
-    private function mapGenericToExpr(GenericTypeNode $typeNode, \ReflectionClass $context, FieldDefinitionInterface $property): Type
+    private function mapGenericToExpr(GenericTypeNode $typeNode, \ReflectionClass $context, string $typeContextName): Type
     {
         $mainType = (string) $typeNode->type;
         $lowMainType = strtolower($mainType);
@@ -370,13 +400,13 @@ class PhpStanEnricher implements EnricherInterface
                 $valueNode = $typeNode->genericTypes[1];
 
                 if ((string) $keyNode === 'string') {
-                    return new MapType($this->mapTypeNodeToType($valueNode, $context, $property));
+                    return new MapType($this->mapTypeNodeToType($valueNode, $context, $typeContextName));
                 }
             }
 
             $itemNode = $typeNode->genericTypes[\count($typeNode->genericTypes) - 1] ?? null;
             if ($itemNode instanceof TypeNode) {
-                return new ArrayType($this->mapTypeNodeToType($itemNode, $context, $property));
+                return new ArrayType($this->mapTypeNodeToType($itemNode, $context, $typeContextName));
             }
 
             return new ArrayType(new BuiltinType('mixed'));
@@ -451,10 +481,10 @@ class PhpStanEnricher implements EnricherInterface
     /**
      * @param \ReflectionClass<object> $context
      */
-    private function mapArrayShapeToExpr(ArrayShapeNode $typeNode, \ReflectionClass $context, FieldDefinitionInterface $property): Type
+    private function mapArrayShapeToExpr(ArrayShapeNode $typeNode, \ReflectionClass $context, string $typeContextName): Type
     {
-        $inlineObjectId = $context->getName() . '::$' . $property->getName() . ' (shape)';
-        $inlineObject = $this->buildInlineObjectShape($inlineObjectId, $typeNode->items, $context);
+        $inlineObjectId = $context->getName() . '::' . $typeContextName . ' (shape)';
+        $inlineObject = $this->buildInlineObjectShape($inlineObjectId, $typeNode->items, $context, $typeContextName);
 
         $expr = new InlineObjectType($inlineObject);
 
@@ -471,17 +501,17 @@ class PhpStanEnricher implements EnricherInterface
     /**
      * @param \ReflectionClass<object> $context
      */
-    private function mapObjectShapeToExpr(ObjectShapeNode $typeNode, \ReflectionClass $context, FieldDefinitionInterface $property): Type
+    private function mapObjectShapeToExpr(ObjectShapeNode $typeNode, \ReflectionClass $context, string $typeContextName): Type
     {
-        $inlineObjectId = $context->getName() . '::$' . $property->getName() . ' (object-shape)';
-        return new InlineObjectType($this->buildInlineObjectShape($inlineObjectId, $typeNode->items, $context));
+        $inlineObjectId = $context->getName() . '::' . $typeContextName . ' (object-shape)';
+        return new InlineObjectType($this->buildInlineObjectShape($inlineObjectId, $typeNode->items, $context, $typeContextName));
     }
 
     /**
      * @param array<int, ArrayShapeItemNode|ObjectShapeItemNode> $items
      * @param \ReflectionClass<object> $context
      */
-    private function buildInlineObjectShape(string $id, array $items, \ReflectionClass $context): InlineObjectDefinition
+    private function buildInlineObjectShape(string $id, array $items, \ReflectionClass $context, string $typeContextName): InlineObjectDefinition
     {
         $inlineObject = new InlineObjectDefinition(id: $id);
 
@@ -494,7 +524,7 @@ class PhpStanEnricher implements EnricherInterface
             }
 
             $nestedProperty = new InlineFieldDefinition(fieldName: $itemName);
-            $nestedProperty->setType($this->mapTypeNodeToType($item->valueType, $context, $nestedProperty));
+            $nestedProperty->setType($this->mapTypeNodeToType($item->valueType, $context, $typeContextName . '.' . $itemName));
 
             if (!$item->optional) {
                 $nestedProperty->setRequired(true);

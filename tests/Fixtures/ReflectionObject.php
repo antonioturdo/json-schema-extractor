@@ -2,7 +2,7 @@
 
 namespace Zeusi\JsonSchemaExtractor\Tests\Fixtures;
 
-class ReflectionObject extends ReflectionParentObject
+class ReflectionObject extends ReflectionParentObject implements \JsonSerializable
 {
     public static string $staticProperty = 'ignored';
 
@@ -29,4 +29,19 @@ class ReflectionObject extends ReflectionParentObject
     public function __construct(
         public bool $promotedDefault = true,
     ) {}
+
+    public static function staticMethod(): string
+    {
+        return 'ignored';
+    }
+
+    public function payload(): array
+    {
+        return [];
+    }
+
+    public function jsonSerialize(): array
+    {
+        return [];
+    }
 }

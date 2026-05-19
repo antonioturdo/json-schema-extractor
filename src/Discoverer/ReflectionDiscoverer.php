@@ -3,6 +3,7 @@
 namespace Zeusi\JsonSchemaExtractor\Discoverer;
 
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
@@ -90,6 +91,20 @@ class ReflectionDiscoverer implements DiscovererInterface
             }
 
             $definition->addProperty($propertyDefinition);
+        }
+
+        if ($reflection->implementsInterface(\JsonSerializable::class) && $reflection->hasMethod('jsonSerialize')) {
+            $reflectionMethod = $reflection->getMethod('jsonSerialize');
+            $methodDefinition = new MethodDefinition($reflectionMethod->getName());
+            $returnType = $reflectionMethod->getReturnType();
+            if ($returnType !== null) {
+                $methodDefinition->setReturnType($this->mapReflectionTypeToExpr(
+                    $returnType,
+                    $reflectionMethod->getDeclaringClass()
+                ));
+            }
+
+            $definition->addMethod($methodDefinition);
         }
 
         return $definition;

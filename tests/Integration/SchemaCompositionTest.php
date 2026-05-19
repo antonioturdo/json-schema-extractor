@@ -5,8 +5,10 @@ namespace Zeusi\JsonSchemaExtractor\Tests\Integration;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
+use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader as SerializerAttributeLoader;
 use Symfony\Component\Validator\Mapping\Factory\LazyLoadingMetadataFactory;
-use Symfony\Component\Validator\Mapping\Loader\AttributeLoader;
+use Symfony\Component\Validator\Mapping\Loader\AttributeLoader as ValidatorAttributeLoader;
 use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
 use Zeusi\JsonSchemaExtractor\Enricher\EnricherInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpDocumentorEnricher;
@@ -15,8 +17,10 @@ use Zeusi\JsonSchemaExtractor\Enricher\SymfonyValidationEnricher;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
+use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CollectionValidatedObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ConflictingCollectionValidatedObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
 
 #[CoversClass(SchemaExtractor::class)]
 class SchemaCompositionTest extends TestCase
@@ -28,21 +32,21 @@ class SchemaCompositionTest extends TestCase
     {
         yield 'phpdoc_then_validator' => [[
             new PhpDocumentorEnricher(),
-            new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new AttributeLoader())),
+            new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new ValidatorAttributeLoader())),
         ]];
 
         yield 'validator_then_phpdoc' => [[
-            new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new AttributeLoader())),
+            new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new ValidatorAttributeLoader())),
             new PhpDocumentorEnricher(),
         ]];
 
         yield 'phpstan_then_validator' => [[
             new PhpStanEnricher(),
-            new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new AttributeLoader())),
+            new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new ValidatorAttributeLoader())),
         ]];
 
         yield 'validator_then_phpstan' => [[
-            new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new AttributeLoader())),
+            new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new ValidatorAttributeLoader())),
             new PhpStanEnricher(),
         ]];
     }
@@ -85,7 +89,7 @@ class SchemaCompositionTest extends TestCase
             new ReflectionDiscoverer(),
             [
                 new PhpDocumentorEnricher(),
-                new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new AttributeLoader())),
+                new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new ValidatorAttributeLoader())),
             ],
             new JsonEncodeSerializationStrategy(),
             new StandardSchemaMapper()
@@ -100,5 +104,45 @@ class SchemaCompositionTest extends TestCase
         self::assertSame('integer', $simpleCollection['properties']['email']['type']);
         self::assertSame('email', $simpleCollection['properties']['email']['format']);
         self::assertContains('email', $simpleCollection['required']);
+    }
+
+    public function testGenerateUsesJsonSerializablePhpDocReturnShape(): void
+    {
+        $extractor = new SchemaExtractor(
+            new ReflectionDiscoverer(),
+            [new PhpStanEnricher()],
+            new JsonEncodeSerializationStrategy(),
+            new StandardSchemaMapper()
+        );
+
+        $schema = $extractor->extract(JsonSerializablePhpDocObject::class);
+        self::assertIsArray($schema);
+        /** @var array<string, mixed> $schema */
+
+        self::assertArrayHasKey('id', $schema['properties']);
+        self::assertArrayHasKey('name', $schema['properties']);
+        self::assertArrayNotHasKey('internal', $schema['properties']);
+        self::assertSame('integer', $schema['properties']['id']['type']);
+        self::assertSame('string', $schema['properties']['name']['type']);
+    }
+
+    public function testGenerateUsesJsonSerializablePhpDocReturnShapeWithSymfonySerializer(): void
+    {
+        $extractor = new SchemaExtractor(
+            new ReflectionDiscoverer(),
+            [new PhpStanEnricher()],
+            new SymfonySerializerStrategy(new ClassMetadataFactory(new SerializerAttributeLoader())),
+            new StandardSchemaMapper()
+        );
+
+        $schema = $extractor->extract(JsonSerializablePhpDocObject::class);
+        self::assertIsArray($schema);
+        /** @var array<string, mixed> $schema */
+
+        self::assertArrayHasKey('id', $schema['properties']);
+        self::assertArrayHasKey('name', $schema['properties']);
+        self::assertArrayNotHasKey('internal', $schema['properties']);
+        self::assertSame('integer', $schema['properties']['id']['type']);
+        self::assertSame('string', $schema['properties']['name']['type']);
     }
 }

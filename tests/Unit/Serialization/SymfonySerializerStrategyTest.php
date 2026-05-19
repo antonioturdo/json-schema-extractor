@@ -14,18 +14,28 @@ use Zeusi\JsonSchemaExtractor\Context\SymfonySerializerContext;
 use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\Runtime\EnrichmentRuntime;
+use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\InlineFieldDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
+use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
+use Zeusi\JsonSchemaExtractor\Model\Type\Types;
+use Zeusi\JsonSchemaExtractor\Serialization\JsonSerializableProjection;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorCat;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SerializerObject;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
 
 #[CoversClass(SymfonySerializerStrategy::class)]
+#[CoversClass(JsonSerializableProjection::class)]
 class SymfonySerializerStrategyTest extends TestCase
 {
     use TypeTestHelperTrait;
@@ -134,6 +144,48 @@ class SymfonySerializerStrategyTest extends TestCase
         $forceObjectPreferences = $this->findFirstNonNullDecorated($this->requireSerializedProperty($forceObjectDefinition, 'preferences')->type);
         self::assertNotNull($forceObjectPreferences);
         self::assertEquals(new \stdClass(), $forceObjectPreferences->annotations?->default);
+    }
+
+    public function testProjectUsesJsonSerializableNormalizerShapeWhenAvailable(): void
+    {
+        $definition = new ClassDefinition(className: JsonSerializablePhpDocObject::class);
+
+        $internal = new PropertyDefinition('internal');
+        $internal->setType(Types::string());
+        $definition->addProperty($internal);
+
+        $shape = new InlineObjectDefinition(id: JsonSerializablePhpDocObject::class . '::jsonSerialize() return');
+        $id = new InlineFieldDefinition('id', required: true);
+        $id->setType(Types::int());
+        $shape->addProperty($id);
+
+        $name = new InlineFieldDefinition('name', required: true);
+        $name->setType(Types::string());
+        $shape->addProperty($name);
+
+        $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
+        $projectedDefinition = $this->strategy->project($definition, new ExtractionContext());
+
+        self::assertArrayHasKey('id', $projectedDefinition->properties);
+        self::assertArrayHasKey('name', $projectedDefinition->properties);
+        self::assertArrayNotHasKey('internal', $projectedDefinition->properties);
+
+        $idProperty = $this->requireSerializedProperty($projectedDefinition, 'id');
+        $idType = $this->requireType($idProperty->type, 'Expected id to have a type.');
+        $this->assertBuiltin($idType, 'int');
+
+        $nameProperty = $this->requireSerializedProperty($projectedDefinition, 'name');
+        $nameType = $this->requireType($nameProperty->type, 'Expected name to have a type.');
+        $this->assertBuiltin($nameType, 'string');
+    }
+
+    public function testProjectFailsWhenJsonSerializableNormalizerShapeIsMissing(): void
+    {
+        $definition = $this->discoverer->discover(JsonSerializablePhpDocObject::class);
+
+        $this->expectException(\LogicException::class);
+
+        $this->strategy->project($definition, new ExtractionContext());
     }
 
     private function enrichSerializerObject(?ExtractionContext $context = null): SerializedObjectDefinition

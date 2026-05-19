@@ -59,6 +59,42 @@ final class TypeUtils
         return self::normalizeUnion([new BuiltinType('null'), $replacement]);
     }
 
+    public static function mergeCompatibleDeclaredType(Type $currentType, Type $nextType): ?Type
+    {
+        $currentBranches = self::toBranches($currentType);
+        $nextBranches = self::toBranches($nextType);
+
+        $matchedNextBranches = [];
+        $resultBranches = [];
+
+        foreach ($currentBranches as $currentBranch) {
+            $compatibleNextBranches = [];
+
+            foreach ($nextBranches as $nextIndex => $nextBranch) {
+                if (!self::isCompatibleReplacement($currentBranch, $nextBranch)) {
+                    continue;
+                }
+
+                $compatibleNextBranches[] = self::mergeBranchMetadata($currentBranch, $nextBranch);
+                $matchedNextBranches[$nextIndex] = true;
+            }
+
+            if ($compatibleNextBranches === []) {
+                // A declared type may refine only part of an existing union; preserve unmatched current branches.
+                $resultBranches[] = $currentBranch;
+                continue;
+            }
+
+            $resultBranches = array_merge($resultBranches, $compatibleNextBranches);
+        }
+
+        if (\count($matchedNextBranches) !== \count($nextBranches)) {
+            return null;
+        }
+
+        return self::normalizeUnion($resultBranches);
+    }
+
     /**
      * Recursively rewrites a {@see Type} tree.
      *
@@ -346,5 +382,64 @@ final class TypeUtils
         }
 
         return $examples;
+    }
+
+    private static function isCompatibleReplacement(Type $currentType, Type $nextType): bool
+    {
+        $currentBaseType = self::unwrapDecorated($currentType);
+        $nextBaseType = self::unwrapDecorated($nextType);
+
+        if ($currentBaseType instanceof UnionType) {
+            // `toBranches()` intentionally splits only top-level unions.
+            // A decorated union would require a policy for distributing wrapper metadata to each branch.
+            return false;
+        }
+
+        if ($currentBaseType instanceof BuiltinType) {
+            return match ($currentBaseType->name) {
+                'array', 'iterable' => $nextBaseType instanceof ArrayType || $nextBaseType instanceof MapType || $nextBaseType instanceof InlineObjectType,
+                'object' => $nextBaseType instanceof InlineObjectType || $nextBaseType instanceof ClassLikeType,
+                default => $nextBaseType instanceof BuiltinType && $nextBaseType->name === $currentBaseType->name,
+            };
+        }
+
+        if ($currentBaseType instanceof ArrayType) {
+            return $nextBaseType instanceof ArrayType;
+        }
+
+        if ($currentBaseType instanceof MapType) {
+            return $nextBaseType instanceof MapType;
+        }
+
+        if ($currentBaseType instanceof InlineObjectType) {
+            return $nextBaseType instanceof InlineObjectType;
+        }
+
+        if ($currentBaseType instanceof ClassLikeType) {
+            return $nextBaseType instanceof ClassLikeType && $nextBaseType->name === $currentBaseType->name;
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<Type>
+     */
+    private static function toBranches(Type $type): array
+    {
+        if ($type instanceof UnionType) {
+            return $type->types;
+        }
+
+        return [$type];
+    }
+
+    private static function mergeBranchMetadata(Type $currentType, Type $nextType): Type
+    {
+        if (self::unwrapDecorated($currentType) instanceof InlineObjectType && self::unwrapDecorated($nextType) instanceof InlineObjectType) {
+            return InlineObjectTypeUtils::mergeInlineObjectTypes($currentType, $nextType);
+        }
+
+        return self::mergeTypeConstraintsAndAnnotations($currentType, $nextType) ?? $nextType;
     }
 }
