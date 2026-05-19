@@ -12,6 +12,9 @@ use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AmbiguousJsonSerializablePhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ConflictingJsonSerializablePhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\PhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
 
@@ -54,6 +57,39 @@ class PhpStanEnricherTest extends TestCase
         self::assertNotNull($unionDecorated->annotations->description);
         self::assertStringContainsString('Title of the union field.', $unionDecorated->annotations->description);
         self::assertStringContainsString('Description of the union field.', $unionDecorated->annotations->description);
+    }
+
+    public function testEnrichExtractsMethodReturnTypes(): void
+    {
+        $definition = $this->discoverer->discover(JsonSerializablePhpDocObject::class);
+
+        $this->enricher->enrich($definition, new ExtractionContext(), new EnrichmentRuntime());
+
+        $jsonSerializeShape = $this->assertInlineObject(
+            $this->requireType($definition->getMethod('jsonSerialize')?->getReturnType(), 'Expected jsonSerialize to have a return type.')
+        );
+        $properties = $jsonSerializeShape->getProperties();
+
+        self::assertSame(['int'], $this->collectTypeNames($properties['id']->getType()));
+        self::assertSame(['string'], $this->collectTypeNames($properties['name']->getType()));
+    }
+
+    public function testEnrichKeepsNativeMethodReturnTypeWhenPhpDocIsIncompatible(): void
+    {
+        $definition = $this->discoverer->discover(ConflictingJsonSerializablePhpDocObject::class);
+
+        $this->enricher->enrich($definition, new ExtractionContext(), new EnrichmentRuntime());
+
+        self::assertSame(['string'], $this->collectTypeNames($definition->getMethod('jsonSerialize')?->getReturnType()));
+    }
+
+    public function testEnrichKeepsNativeMethodReturnTypeWhenPhpDocHasMultipleReturnTags(): void
+    {
+        $definition = $this->discoverer->discover(AmbiguousJsonSerializablePhpDocObject::class);
+
+        $this->enricher->enrich($definition, new ExtractionContext(), new EnrichmentRuntime());
+
+        self::assertSame(['array'], $this->collectTypeNames($definition->getMethod('jsonSerialize')?->getReturnType()));
     }
 
     public function testEnrichHandlesShapedArrays(): void

@@ -5,12 +5,7 @@ namespace Zeusi\JsonSchemaExtractor\Enricher\Runtime;
 use Zeusi\JsonSchemaExtractor\Model\Php\FieldDefinitionInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineFieldDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
-use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
-use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
-use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
-use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectTypeUtils;
-use Zeusi\JsonSchemaExtractor\Model\Type\MapType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeAnnotations;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeUtils;
@@ -32,7 +27,7 @@ final class FieldDefinitionUpdater
             return;
         }
 
-        $mergedType = $this->mergeCompatibleDeclaredType($currentType, $type);
+        $mergedType = TypeUtils::mergeCompatibleDeclaredType($currentType, $type);
         if ($mergedType !== null) {
             $field->setType($mergedType);
         }
@@ -196,43 +191,6 @@ final class FieldDefinitionUpdater
         $field->setType($transform($field->getType()));
     }
 
-    private function mergeCompatibleDeclaredType(Type $currentType, Type $nextType): ?Type
-    {
-        $currentBranches = $this->toBranches($currentType);
-        $nextBranches = $this->toBranches($nextType);
-
-        $matchedNextBranches = [];
-        $resultBranches = [];
-
-        foreach ($currentBranches as $currentBranch) {
-            $compatibleNextBranches = [];
-
-            foreach ($nextBranches as $nextIndex => $nextBranch) {
-                if (!$this->isCompatibleReplacement($currentBranch, $nextBranch)) {
-                    continue;
-                }
-
-                $compatibleNextBranches[] = $this->mergeBranchMetadata($currentBranch, $nextBranch);
-                $matchedNextBranches[$nextIndex] = true;
-            }
-
-            if ($compatibleNextBranches === []) {
-                $resultBranches[] = $currentBranch;
-                continue;
-            }
-
-            foreach ($compatibleNextBranches as $compatibleNextBranch) {
-                $resultBranches[] = $compatibleNextBranch;
-            }
-        }
-
-        if (\count($matchedNextBranches) !== \count($nextBranches)) {
-            return null;
-        }
-
-        return TypeUtils::normalizeUnion($resultBranches);
-    }
-
     /**
      * @param callable(FieldDefinitionInterface): void $transform
      */
@@ -271,60 +229,4 @@ final class FieldDefinitionUpdater
         return $type;
     }
 
-    private function isCompatibleReplacement(Type $currentType, Type $nextType): bool
-    {
-        $currentBaseType = TypeUtils::unwrapDecorated($currentType);
-        $nextBaseType = TypeUtils::unwrapDecorated($nextType);
-
-        if ($currentBaseType instanceof UnionType) {
-            return false;
-        }
-
-        if ($currentBaseType instanceof BuiltinType) {
-            return match ($currentBaseType->name) {
-                'array', 'iterable' => $nextBaseType instanceof ArrayType || $nextBaseType instanceof MapType || $nextBaseType instanceof InlineObjectType,
-                'object' => $nextBaseType instanceof InlineObjectType || $nextBaseType instanceof ClassLikeType,
-                default => $nextBaseType instanceof BuiltinType && $nextBaseType->name === $currentBaseType->name,
-            };
-        }
-
-        if ($currentBaseType instanceof ArrayType) {
-            return $nextBaseType instanceof ArrayType;
-        }
-
-        if ($currentBaseType instanceof MapType) {
-            return $nextBaseType instanceof MapType;
-        }
-
-        if ($currentBaseType instanceof InlineObjectType) {
-            return $nextBaseType instanceof InlineObjectType;
-        }
-
-        if ($currentBaseType instanceof ClassLikeType) {
-            return $nextBaseType instanceof ClassLikeType && $nextBaseType->name === $currentBaseType->name;
-        }
-
-        return false;
-    }
-
-    /**
-     * @return list<Type>
-     */
-    private function toBranches(Type $type): array
-    {
-        if ($type instanceof UnionType) {
-            return $type->types;
-        }
-
-        return [$type];
-    }
-
-    private function mergeBranchMetadata(Type $currentType, Type $nextType): Type
-    {
-        if (TypeUtils::unwrapDecorated($currentType) instanceof InlineObjectType && TypeUtils::unwrapDecorated($nextType) instanceof InlineObjectType) {
-            return InlineObjectTypeUtils::mergeInlineObjectTypes($currentType, $nextType);
-        }
-
-        return TypeUtils::mergeTypeConstraintsAndAnnotations($currentType, $nextType) ?? $nextType;
-    }
 }

@@ -28,9 +28,18 @@ final class JsonEncodeSerializationStrategy implements SerializationStrategyInte
 {
     public function project(ClassDefinition $definition, ExtractionContext $context): SerializedObjectDefinition
     {
+        $jsonEncodeContext = $context->find(JsonEncodeContext::class);
+        $jsonSerializableDefinition = JsonSerializableProjection::project(
+            $definition,
+            fn(?Type $type): ?Type => $this->projectType($type, $jsonEncodeContext)
+        );
+        if ($jsonSerializableDefinition !== null) {
+            return $jsonSerializableDefinition;
+        }
+
         $properties = [];
         foreach ($definition->getProperties() as $property) {
-            $serializedProperty = $this->projectFieldDefinition($property, $context->find(JsonEncodeContext::class));
+            $serializedProperty = $this->projectFieldDefinition($property, $jsonEncodeContext);
             $properties[$serializedProperty->name] = $serializedProperty;
         }
 

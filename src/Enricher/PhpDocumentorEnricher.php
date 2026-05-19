@@ -4,9 +4,11 @@ namespace Zeusi\JsonSchemaExtractor\Enricher;
 
 use phpDocumentor\Reflection\DocBlock\Tags\BaseTag;
 use phpDocumentor\Reflection\DocBlock\Tags\Param;
+use phpDocumentor\Reflection\DocBlock\Tags\Return_;
 use phpDocumentor\Reflection\DocBlock\Tags\Var_;
 use phpDocumentor\Reflection\DocBlockFactory;
 use phpDocumentor\Reflection\DocBlockFactoryInterface;
+use phpDocumentor\Reflection\Types\Context;
 use phpDocumentor\Reflection\Types\ContextFactory;
 use Zeusi\JsonSchemaExtractor\Context\ExtractionContext;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpDocumentor\PhpDocumentorTypeMapperInterface;
@@ -59,6 +61,7 @@ class PhpDocumentorEnricher implements EnricherInterface
         }
 
         $this->enrichPromotedPropertiesFromConstructorParams($definition, $reflectionClass, $context, $runtime);
+        $this->enrichMethods($definition, $reflectionClass, $context, $runtime);
 
         foreach ($definition->getProperties() as $propertyName => $propertyDef) {
             try {
@@ -138,7 +141,47 @@ class PhpDocumentorEnricher implements EnricherInterface
     /**
      * @param \ReflectionClass<object> $reflectionClass
      */
-    private function enrichPromotedPropertiesFromConstructorParams(ClassDefinition $definition, \ReflectionClass $reflectionClass, \phpDocumentor\Reflection\Types\Context $context, EnrichmentRuntime $runtime): void
+    private function enrichMethods(ClassDefinition $definition, \ReflectionClass $reflectionClass, Context $context, EnrichmentRuntime $runtime): void
+    {
+        foreach ($definition->getMethods() as $methodName => $methodDefinition) {
+            try {
+                if (!$reflectionClass->hasMethod($methodName)) {
+                    continue;
+                }
+
+                $docComment = $reflectionClass->getMethod($methodName)->getDocComment();
+                if ($docComment === false || $docComment === '') {
+                    continue;
+                }
+
+                $docBlock = $this->factory->create($docComment, $context);
+                $returnTags = $docBlock->getTagsByName('return');
+                if (\count($returnTags) !== 1) {
+                    continue;
+                }
+
+                $returnTag = $returnTags[0];
+                if (!$returnTag instanceof Return_) {
+                    continue;
+                }
+
+                $phpDocumentorType = $returnTag->getType();
+                if ($phpDocumentorType !== null) {
+                    $runtime->methodDefinitionUpdater->applyCompatibleDeclaredReturnType(
+                        $methodDefinition,
+                        $this->typeMapper->parse($phpDocumentorType, $reflectionClass)
+                    );
+                }
+            } catch (\Exception $e) {
+                // Gracefully ignore method docblocks that are malformed
+            }
+        }
+    }
+
+    /**
+     * @param \ReflectionClass<object> $reflectionClass
+     */
+    private function enrichPromotedPropertiesFromConstructorParams(ClassDefinition $definition, \ReflectionClass $reflectionClass, Context $context, EnrichmentRuntime $runtime): void
     {
         $constructor = $reflectionClass->getConstructor();
         if ($constructor === null) {

@@ -10,10 +10,12 @@ class ClassDefinition
     /**
      * @param string $className Fully qualified class name
      * @param array<string, PropertyDefinition> $properties Defined class-backed properties, indexed by their stable/internal name
+     * @param array<string, MethodDefinition> $methods Defined class methods, indexed by their stable/internal name
      */
     public function __construct(
         private readonly string $className,
         private array $properties = [],
+        private array $methods = [],
         private ?string $title = null,
         private ?string $description = null,
     ) {}
@@ -39,6 +41,24 @@ class ClassDefinition
     public function getProperty(string $propertyName): ?PropertyDefinition
     {
         return $this->properties[$propertyName] ?? null;
+    }
+
+    /**
+     * @return array<string, MethodDefinition>
+     */
+    public function getMethods(): array
+    {
+        return $this->methods;
+    }
+
+    public function addMethod(MethodDefinition $method): void
+    {
+        $this->methods[$method->getName()] = $method;
+    }
+
+    public function getMethod(string $methodName): ?MethodDefinition
+    {
+        return $this->methods[$methodName] ?? null;
     }
 
     public function getTitle(): ?string

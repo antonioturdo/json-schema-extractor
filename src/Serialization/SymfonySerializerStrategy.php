@@ -64,6 +64,13 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
         }
 
         $serializerContext = $context->find(SymfonySerializerContext::class) ?? new SymfonySerializerContext();
+        $jsonSerializableDefinition = JsonSerializableProjection::project(
+            $definition,
+            fn(?Type $type): ?Type => $this->projectType($type, $serializerContext->context)
+        );
+        if ($jsonSerializableDefinition !== null) {
+            return $jsonSerializableDefinition;
+        }
 
         try {
             $metadata = $this->classMetadataFactory->getMetadataFor($className);
@@ -123,10 +130,7 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
                 continue;
             }
 
-            $projectedType = TypeUtils::rewrite(
-                $this->copyType($propertyDefinition->getType(), $propertyContext),
-                fn(Type $type): ?Type => $this->rewriteKnownNormalizerExpr($type, $propertyContext)
-            );
+            $projectedType = $this->projectType($propertyDefinition->getType(), $propertyContext);
 
             if ($newName === null && $this->nameConverter !== null && !$isDiscriminatorProperty) {
                 if (interface_exists(AdvancedNameConverterInterface::class) && $this->nameConverter instanceof AdvancedNameConverterInterface) {
@@ -533,6 +537,17 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
             title: $definition->getTitle(),
             description: $definition->getDescription(),
             additionalProperties: $definition->getAdditionalProperties()
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function projectType(?Type $type, array $context): ?Type
+    {
+        return TypeUtils::rewrite(
+            $this->copyType($type, $context),
+            fn(Type $type): ?Type => $this->rewriteKnownNormalizerExpr($type, $context)
         );
     }
 

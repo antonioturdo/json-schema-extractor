@@ -165,7 +165,7 @@ Serialization strategies convert the enriched PHP model into the JSON-facing sha
 
 | Component                         | Use it when                                                                                                                      | Documentation                                                                          |
 |:----------------------------------|:---------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------|
-| `JsonEncodeSerializationStrategy` | Your JSON payload follows PHP `json_encode()` behavior.                                                                          | [`docs/serialization/json-encode.md`](docs/serialization/json-encode.md)               |
+| `JsonEncodeSerializationStrategy` | Your JSON payload follows PHP `json_encode()` behavior, including `JsonSerializable` return shapes when documented.              | [`docs/serialization/json-encode.md`](docs/serialization/json-encode.md)               |
 | `SymfonySerializerStrategy`       | Your JSON payload is produced by Symfony Serializer, including groups, serialized names, name converters, and known normalizers. | [`docs/serialization/symfony-serializer.md`](docs/serialization/symfony-serializer.md) |
 
 To create a custom serialization strategy implement [`SerializationStrategyInterface`](src/Serialization/SerializationStrategyInterface.php).

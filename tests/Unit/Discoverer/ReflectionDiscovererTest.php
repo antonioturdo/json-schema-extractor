@@ -13,7 +13,7 @@ use Zeusi\JsonSchemaExtractor\Tests\Fixtures\StatusEnum;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
 
 #[CoversClass(ReflectionDiscoverer::class)]
-class ReflectionPropertyDiscovererTest extends TestCase
+class ReflectionDiscovererTest extends TestCase
 {
     use TypeTestHelperTrait;
 
@@ -60,6 +60,10 @@ class ReflectionPropertyDiscovererTest extends TestCase
 
         self::assertSame(['bool'], $this->collectTypeNames($this->requireProperty($definition, 'promotedDefault')->getType()));
         self::assertTrue($this->findFirstDecorated($this->requireProperty($definition, 'promotedDefault')->getType())?->annotations?->default);
+
+        self::assertArrayNotHasKey('payload', $definition->getMethods());
+        self::assertArrayNotHasKey('inheritedMethod', $definition->getMethods());
+        self::assertSame(['array'], $this->collectTypeNames($definition->getMethod('jsonSerialize')?->getReturnType()));
     }
 
     /**

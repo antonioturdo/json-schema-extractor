@@ -6,5 +6,6 @@ final class EnrichmentRuntime
 {
     public function __construct(
         public readonly FieldDefinitionUpdater $fieldDefinitionUpdater = new FieldDefinitionUpdater(),
+        public readonly MethodDefinitionUpdater $methodDefinitionUpdater = new MethodDefinitionUpdater(),
     ) {}
 }
