@@ -22,6 +22,7 @@ use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\FieldDefinitionInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
@@ -52,7 +53,7 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
         private readonly ?NameConverterInterface $nameConverter = null
     ) {}
 
-    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedObjectDefinition
+    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedPayloadDefinition
     {
         $className = $definition->getClassName();
 
@@ -165,13 +166,13 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
             $properties[$projectedProperty->name] = $projectedProperty;
         }
 
-        return new SerializedObjectDefinition(
+        return new SerializedPayloadDefinition(new SerializedObjectType(new SerializedObjectDefinition(
             name: $definition->getClassName(),
             properties: $properties,
             title: $definition->getTitle(),
             description: $definition->getDescription(),
             concreteClasses: $concreteClasses
-        );
+        )));
     }
 
     private function createDiscriminatorProperty(string $propertyName, string $mappedType): SerializedPropertyDefinition

@@ -125,11 +125,11 @@ Defaults are round-tripped through `json_encode()` / `json_decode()` using these
 
 ### `JsonSerializable`
 
-For classes that implement `JsonSerializable`, the strategy follows Symfony's `JsonSerializableNormalizer` behavior when the discovered `jsonSerialize()` return type can be projected as an object shape.
+For classes that implement `JsonSerializable`, the strategy follows Symfony's `JsonSerializableNormalizer` behavior when the discovered `jsonSerialize()` return type can be projected to a precise payload type.
 
-This support is metadata-driven: `jsonSerialize()` is not executed and its method body is not analyzed. Use PHPDoc return metadata, such as `@return array{id: int, name: string}`, together with a PHPDoc enricher to describe the serialized payload shape.
+This support is metadata-driven: `jsonSerialize()` is not executed and its method body is not analyzed. Use PHPDoc return metadata, such as `@return array{id: int, name: string}`, together with a PHPDoc enricher to describe object-like arrays.
 
-When a usable `jsonSerialize()` return shape is available, it is treated as the root serialized object and the normal property projection is skipped. If no usable return shape is available, the strategy throws a `LogicException` because it cannot infer the actual `JsonSerializable` payload without executing the method.
+When usable `jsonSerialize()` return metadata is available, it is treated as the root serialized payload and the normal property projection is skipped. If no usable return metadata is available, the strategy throws a `LogicException` because it cannot infer the actual `JsonSerializable` payload without executing the method. Bare `array`, `iterable`, `object`, and `mixed` return types are intentionally treated as too vague.
 
 ## What it reads
 
@@ -157,7 +157,7 @@ When a usable `jsonSerialize()` return shape is available, it is treated as the 
 | Symfony UID normalization | `type: string`, `format: uuid` where applicable | Base32/Base58 remain plain string. |
 | `TranslatableInterface` normalization | `type: string` | Locale changes value, not shape. |
 | Data URI file normalization | `type: string`, pattern `^data:` | Matches `DataUriNormalizer`. |
-| `JsonSerializable` normalization | shape declared by `jsonSerialize()` return PHPDoc | Used when the discovered method return type can be projected as an object shape. |
+| `JsonSerializable` normalization | payload declared by `jsonSerialize()` return metadata | Supports precise object, scalar, list, and dictionary payloads. |
 | `ConstraintViolationListInterface` normalization | RFC 7807-like object shape | Requires relevant Symfony components installed. |
 | `FlattenException` normalization | RFC 7807-like problem object shape | Requires relevant Symfony components installed. |
 | Class discriminator mapping | discriminator field + `oneOf` concrete classes | Base/interface schemas resolve through configured map. |

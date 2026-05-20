@@ -12,6 +12,7 @@ use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
@@ -71,7 +72,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         $definition->addProperty($shape);
 
         $context = (new ExtractionContext())->with(new JsonEncodeContext(\JSON_FORCE_OBJECT));
-        $projected = (new JsonEncodeSerializationStrategy())->project($definition, $context);
+        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, $context));
 
         self::assertSame('App\\Payload', $projected->name);
         self::assertSame('Payload', $projected->title);
@@ -100,7 +101,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         ]));
         $definition->addProperty($events);
 
-        $projected = (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
+        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext()));
 
         $eventsType = $this->requireType(
             $this->requireSerializedProperty($projected, 'events')->type,
@@ -143,7 +144,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
 
         $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
 
-        $projected = (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
+        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext()));
 
         self::assertSame(JsonSerializablePhpDocObject::class, $projected->name);
         self::assertSame('Payload', $projected->title);
@@ -160,6 +161,16 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         $this->assertBuiltin($this->requireType($nameProperty->type, 'Expected name to have a type.'), 'string');
     }
 
+    public function testProjectUsesJsonSerializeScalarReturnWhenAvailable(): void
+    {
+        $definition = new ClassDefinition(className: JsonSerializablePhpDocObject::class);
+        $definition->addMethod(new MethodDefinition('jsonSerialize', Types::string()));
+
+        $payload = (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
+
+        $this->assertBuiltin($payload->type, 'string');
+    }
+
     public function testProjectIgnoresJsonSerializeMethodWhenClassDoesNotImplementInterface(): void
     {
         $definition = new ClassDefinition(className: BasicObject::class);
@@ -174,7 +185,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         $shape->addProperty($id);
         $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
 
-        $projected = (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
+        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext()));
 
         self::assertArrayHasKey('internal', $projected->properties);
         self::assertArrayNotHasKey('id', $projected->properties);
@@ -239,5 +250,13 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         }
 
         return $property;
+    }
+
+    private function requireRootObject(SerializedPayloadDefinition $payload): SerializedObjectDefinition
+    {
+        $type = $this->unwrapDecorated($payload->type);
+        self::assertInstanceOf(SerializedObjectType::class, $type);
+
+        return $type->shape;
     }
 }

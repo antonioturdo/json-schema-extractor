@@ -14,6 +14,7 @@ use Zeusi\JsonSchemaExtractor\Model\Php\InlineFieldDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
@@ -80,7 +81,7 @@ final class StandardSchemaMapperTest extends TestCase
 
         $schemaProvider = static fn(string $className): Schema => (new Schema())->setType(SchemaType::OBJECT);
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper())->map(self::serialized($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper())->map(self::payload($definition), $schemaProvider));
 
         self::assertSame('object', $serialized['type']);
 
@@ -115,7 +116,7 @@ final class StandardSchemaMapperTest extends TestCase
             ->setType(SchemaType::OBJECT)
             ->addProperty('id', (new Schema())->setType(SchemaType::INTEGER), true);
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Definitions))->map(self::serialized($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Definitions))->map(self::payload($definition), $schemaProvider));
 
         self::assertSame('#/definitions/BasicObject', $serialized['properties']['related']['$ref']);
         self::assertSame('object', $serialized['definitions']['BasicObject']['type']);
@@ -132,7 +133,7 @@ final class StandardSchemaMapperTest extends TestCase
 
         $schemaProvider = static fn(string $className): Schema => (new Schema())->setType(SchemaType::OBJECT);
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Definitions))->map(self::serialized($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Definitions))->map(self::payload($definition), $schemaProvider));
 
         self::assertSame('#/definitions/StatusEnum', $serialized['properties']['status']['$ref']);
         self::assertSame('string', $serialized['definitions']['StatusEnum']['type']);
@@ -155,7 +156,7 @@ final class StandardSchemaMapperTest extends TestCase
             ->setType(SchemaType::OBJECT)
             ->addProperty('id', (new Schema())->setType(SchemaType::INTEGER), true);
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Inline))->map(self::serialized($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Inline))->map(self::payload($definition), $schemaProvider));
 
         self::assertSame('object', $serialized['properties']['related']['type']);
         self::assertSame('integer', $serialized['properties']['related']['properties']['id']['type']);
@@ -186,7 +187,7 @@ final class StandardSchemaMapperTest extends TestCase
 
         $schemaProvider = static fn(string $className): Schema => new Schema();
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper())->map(self::serialized($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper())->map(self::payload($definition), $schemaProvider));
 
         self::assertEquals(new \stdClass(), $serialized['properties']['anything']);
         self::assertSame('object', $serialized['properties']['headers']['type']);
@@ -212,9 +213,42 @@ final class StandardSchemaMapperTest extends TestCase
 
         $schemaProvider = static fn(string $className): Schema => new Schema();
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper())->map(self::serialized($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper())->map(self::payload($definition), $schemaProvider));
 
         self::assertCount(2, $serialized['properties']['value'][$keyword]);
+    }
+
+    #[DataProvider('rootObjectTypeProvider')]
+    public function testMapFindsRootObjectDefinitionInsideDecoratedPayloadType(Type $type): void
+    {
+        $payload = new SerializedPayloadDefinition($type);
+        $schemaProvider = static fn(string $className): Schema => (new Schema())->setType(SchemaType::OBJECT);
+
+        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Definitions))->map($payload, $schemaProvider));
+
+        self::assertSame('#', $serialized['properties']['self']['$ref']);
+    }
+
+    /**
+     * @return iterable<string, array{Type}>
+     */
+    public static function rootObjectTypeProvider(): iterable
+    {
+        $shape = new SerializedObjectDefinition(
+            name: BasicObject::class,
+            properties: [
+                'self' => new SerializedPropertyDefinition(
+                    name: 'self',
+                    required: true,
+                    type: Types::classLike(BasicObject::class)
+                ),
+            ]
+        );
+        $objectType = new SerializedObjectType($shape);
+
+        yield 'decorated' => [
+            new DecoratedType($objectType, annotations: new TypeAnnotations(title: 'Root')),
+        ];
     }
 
     /**
@@ -238,7 +272,7 @@ final class StandardSchemaMapperTest extends TestCase
 
         $this->expectException(\LogicException::class);
 
-        (new StandardSchemaMapper())->map(self::serialized($definition), $schemaProvider);
+        (new StandardSchemaMapper())->map(self::payload($definition), $schemaProvider);
     }
 
     /**
@@ -266,6 +300,11 @@ final class StandardSchemaMapperTest extends TestCase
             title: $definition->getTitle(),
             description: $definition->getDescription()
         );
+    }
+
+    private static function payload(ClassDefinition $definition): SerializedPayloadDefinition
+    {
+        return new SerializedPayloadDefinition(new SerializedObjectType(self::serialized($definition)));
     }
 
     private static function serializedInlineObject(InlineObjectDefinition $definition): SerializedObjectDefinition

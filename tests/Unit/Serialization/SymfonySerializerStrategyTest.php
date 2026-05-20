@@ -20,6 +20,7 @@ use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
@@ -55,7 +56,7 @@ class SymfonySerializerStrategyTest extends TestCase
     {
         $definition = $this->discoverer->discover(SerializerObject::class);
 
-        $projectedDefinition = $this->strategy->project($definition, new ExtractionContext());
+        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext()));
 
         self::assertArrayNotHasKey('name', $projectedDefinition->properties);
         self::assertSame('renamed_field', $this->requireSerializedProperty($projectedDefinition, 'renamed_field')->name);
@@ -67,7 +68,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $definition = $this->discoverer->discover(SerializerObject::class);
         $context = (new ExtractionContext())->with(new SymfonySerializerContext(context: ['groups' => ['read']]));
 
-        $definition = $this->strategy->project($definition, $context);
+        $definition = $this->requireRootObject($this->strategy->project($definition, $context));
 
         self::assertArrayHasKey('id', $definition->properties);
         self::assertArrayNotHasKey('name', $definition->properties);
@@ -79,7 +80,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $definition = $this->discoverer->discover(DiscriminatorCat::class);
         $context = (new ExtractionContext())->with(new SymfonySerializerContext(context: ['groups' => ['read']]));
 
-        $definition = $this->strategy->project($definition, $context);
+        $definition = $this->requireRootObject($this->strategy->project($definition, $context));
 
         $typeField = $this->requireSerializedProperty($definition, 'type');
         self::assertTrue($typeField->required);
@@ -164,7 +165,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $shape->addProperty($name);
 
         $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
-        $projectedDefinition = $this->strategy->project($definition, new ExtractionContext());
+        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext()));
 
         self::assertArrayHasKey('id', $projectedDefinition->properties);
         self::assertArrayHasKey('name', $projectedDefinition->properties);
@@ -194,7 +195,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $definition = $this->discoverer->discover(SerializerObject::class);
 
         (new PhpStanEnricher())->enrich($definition, $context, new EnrichmentRuntime());
-        $definition = $this->strategy->project($definition, $context);
+        $definition = $this->requireRootObject($this->strategy->project($definition, $context));
 
         return $definition;
     }
@@ -259,5 +260,13 @@ class SymfonySerializerStrategyTest extends TestCase
         }
 
         return $property;
+    }
+
+    private function requireRootObject(SerializedPayloadDefinition $payload): SerializedObjectDefinition
+    {
+        $type = $this->unwrapDecorated($payload->type);
+        self::assertInstanceOf(SerializedObjectType::class, $type);
+
+        return $type->shape;
     }
 }

@@ -8,6 +8,7 @@ use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\FieldDefinitionInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
@@ -26,7 +27,7 @@ use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
 
 final class JsonEncodeSerializationStrategy implements SerializationStrategyInterface
 {
-    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedObjectDefinition
+    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedPayloadDefinition
     {
         $jsonEncodeContext = $context->find(JsonEncodeContext::class);
         $jsonSerializableDefinition = JsonSerializableProjection::project(
@@ -43,12 +44,12 @@ final class JsonEncodeSerializationStrategy implements SerializationStrategyInte
             $properties[$serializedProperty->name] = $serializedProperty;
         }
 
-        return new SerializedObjectDefinition(
+        return new SerializedPayloadDefinition(new SerializedObjectType(new SerializedObjectDefinition(
             name: $definition->getClassName(),
             properties: $properties,
             title: $definition->getTitle(),
             description: $definition->getDescription()
-        );
+        )));
     }
 
     private function projectFieldDefinition(FieldDefinitionInterface $field, ?JsonEncodeContext $context): SerializedPropertyDefinition

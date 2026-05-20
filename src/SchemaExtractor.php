@@ -11,6 +11,10 @@ use Zeusi\JsonSchemaExtractor\Enricher\Runtime\EnrichmentRuntime;
 use Zeusi\JsonSchemaExtractor\Mapper\SchemaMapperInterface;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
+use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Serialization\SerializationStrategyInterface;
 
 /**
@@ -101,7 +105,42 @@ class SchemaExtractor
      * @param class-string $className
      * @throws \ReflectionException
      */
-    private function applyAdditionalPropertiesDefault(SerializedObjectDefinition $definition, string $className): SerializedObjectDefinition
+    private function applyAdditionalPropertiesDefault(SerializedPayloadDefinition $definition, string $className): SerializedPayloadDefinition
+    {
+        return new SerializedPayloadDefinition(
+            $this->applyAdditionalPropertiesDefaultToType($definition->type, $className)
+        );
+    }
+
+    /**
+     * @param class-string $className
+     * @throws \ReflectionException
+     */
+    private function applyAdditionalPropertiesDefaultToType(Type $type, string $className): Type
+    {
+        if ($type instanceof DecoratedType) {
+            return new DecoratedType(
+                $this->applyAdditionalPropertiesDefaultToType($type->type, $className),
+                $type->constraints,
+                $type->annotations
+            );
+        }
+
+        if (!$type instanceof SerializedObjectType) {
+            return $type;
+        }
+
+        return new SerializedObjectType($this->applyAdditionalPropertiesDefaultToObject(
+            $type->shape,
+            $className
+        ));
+    }
+
+    /**
+     * @param class-string $className
+     * @throws \ReflectionException
+     */
+    private function applyAdditionalPropertiesDefaultToObject(SerializedObjectDefinition $definition, string $className): SerializedObjectDefinition
     {
         if ($definition->additionalProperties !== null) {
             return $definition;
