@@ -5,7 +5,9 @@ namespace Zeusi\JsonSchemaExtractor\Tests\Unit\Mapper;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Zeusi\JsonSchemaExtractor\Mapper\ClassReferenceStrategy;
+use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaDialect;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapperOptions;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\SchemaType;
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
@@ -116,7 +118,9 @@ final class StandardSchemaMapperTest extends TestCase
             ->setType(SchemaType::OBJECT)
             ->addProperty('id', (new Schema())->setType(SchemaType::INTEGER), true);
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Definitions))->map(self::payload($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper(
+            new StandardSchemaMapperOptions(classReferenceStrategy: ClassReferenceStrategy::Definitions)
+        ))->map(self::payload($definition), $schemaProvider));
 
         self::assertSame('#/definitions/BasicObject', $serialized['properties']['related']['$ref']);
         self::assertSame('object', $serialized['definitions']['BasicObject']['type']);
@@ -133,7 +137,9 @@ final class StandardSchemaMapperTest extends TestCase
 
         $schemaProvider = static fn(string $className): Schema => (new Schema())->setType(SchemaType::OBJECT);
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Definitions))->map(self::payload($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper(
+            new StandardSchemaMapperOptions(classReferenceStrategy: ClassReferenceStrategy::Definitions)
+        ))->map(self::payload($definition), $schemaProvider));
 
         self::assertSame('#/definitions/StatusEnum', $serialized['properties']['status']['$ref']);
         self::assertSame('string', $serialized['definitions']['StatusEnum']['type']);
@@ -156,7 +162,9 @@ final class StandardSchemaMapperTest extends TestCase
             ->setType(SchemaType::OBJECT)
             ->addProperty('id', (new Schema())->setType(SchemaType::INTEGER), true);
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Inline))->map(self::payload($definition), $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper(
+            new StandardSchemaMapperOptions(classReferenceStrategy: ClassReferenceStrategy::Inline)
+        ))->map(self::payload($definition), $schemaProvider));
 
         self::assertSame('object', $serialized['properties']['related']['type']);
         self::assertSame('integer', $serialized['properties']['related']['properties']['id']['type']);
@@ -224,9 +232,25 @@ final class StandardSchemaMapperTest extends TestCase
         $payload = new SerializedPayloadDefinition($type);
         $schemaProvider = static fn(string $className): Schema => (new Schema())->setType(SchemaType::OBJECT);
 
-        $serialized = self::serializeSchema((new StandardSchemaMapper(ClassReferenceStrategy::Definitions))->map($payload, $schemaProvider));
+        $serialized = self::serializeSchema((new StandardSchemaMapper(
+            new StandardSchemaMapperOptions(classReferenceStrategy: ClassReferenceStrategy::Definitions)
+        ))->map($payload, $schemaProvider));
 
         self::assertSame('#', $serialized['properties']['self']['$ref']);
+    }
+
+    public function testMapCanIncludeSchemaKeywordForConfiguredDialect(): void
+    {
+        $definition = new ClassDefinition('MyDto');
+
+        $schemaProvider = static fn(string $className): Schema => new Schema();
+
+        $serialized = self::serializeSchema((new StandardSchemaMapper(new StandardSchemaMapperOptions(
+            dialect: JsonSchemaDialect::Draft7,
+            includeSchemaKeyword: true
+        )))->map(self::payload($definition), $schemaProvider));
+
+        self::assertSame('http://json-schema.org/draft-07/schema#', $serialized['$schema']);
     }
 
     /**

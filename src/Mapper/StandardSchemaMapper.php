@@ -46,7 +46,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
     private ?string $rootClassName = null;
 
     public function __construct(
-        private readonly ClassReferenceStrategy $classReferenceStrategy = ClassReferenceStrategy::Definitions
+        private readonly StandardSchemaMapperOptions $options = new StandardSchemaMapperOptions()
     ) {}
 
     public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): Schema
@@ -66,7 +66,11 @@ class StandardSchemaMapper implements SchemaMapperInterface
         }
 
         if ($isRootMap) {
-            if ($this->classReferenceStrategy === ClassReferenceStrategy::Definitions && $this->definitions !== []) {
+            if ($this->options->includeSchemaKeyword) {
+                $schema->setSchema($this->options->dialect->schemaUri());
+            }
+
+            if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions && $this->definitions !== []) {
                 $schema->setDefinitions($this->definitions);
             }
 
@@ -96,7 +100,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
     {
         $schemas = [];
         foreach ($concreteClasses as $className) {
-            if ($this->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
+            if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
                 $this->registerDefinition($className);
                 $schemas[] = (new Schema())->setRef($this->definitionRef($className));
             } else {
@@ -247,7 +251,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
                     or to an untyped object (additionalProperties: true).', $className));
         }
 
-        if ($this->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
+        if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
             if ($className === $this->rootClassName) {
                 return (new Schema())->setRef('#');
             }
@@ -261,7 +265,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
 
     private function mapEnumType(EnumType $type): Schema
     {
-        if ($this->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
+        if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
             $this->registerEnumDefinition($type->className);
             return (new Schema())->setRef($this->definitionRef($type->className));
         }

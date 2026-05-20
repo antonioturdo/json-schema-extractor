@@ -174,7 +174,8 @@ To create a custom serialization strategy implement [`SerializationStrategyInter
 
 [`StandardSchemaMapper`](src/Mapper/StandardSchemaMapper.php) is the default and currently only mapper. It converts the serialized payload model to Draft-7 JSON Schema.
 By default, class-backed DTOs and enums are collected under `definitions` and referenced with `$ref`.
-If you prefer those schemas to be expanded at the usage site, configure the mapper with the inline class reference strategy.
+If you prefer those schemas to be expanded at the usage site, configure [`StandardSchemaMapperOptions`](src/Mapper/StandardSchemaMapperOptions.php) with the inline class reference strategy.
+The same options object also declares the JSON Schema dialect and whether the root `$schema` keyword should be emitted.
 
 Nested objects and complex structures are handled recursively. With [`ClassReferenceStrategy::Definitions`](src/Mapper/ClassReferenceStrategy.php), class-backed types are emitted once under `definitions` and reused through `$ref`. Circular references are always broken with `$ref`.
 
