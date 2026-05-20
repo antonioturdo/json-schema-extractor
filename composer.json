@@ -28,7 +28,8 @@
         "symfony/serializer": "^6.4 || ^7.0 || ^8.0",
         "symfony/validator": "^6.4 || ^7.0 || ^8.0",
         "symfony/uid": "^6.4 || ^7.0 || ^8.0",
-        "symfony/translation-contracts": "^3.5"
+        "symfony/translation-contracts": "^3.5",
+        "opis/json-schema": "^2.6"
     },
     "suggest": {
         "phpdocumentor/reflection-docblock": "Allows extracting DocBlock text metadata and PHPDoc types using PhpDocumentorEnricher",

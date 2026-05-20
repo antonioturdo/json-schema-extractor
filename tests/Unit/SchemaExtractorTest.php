@@ -14,6 +14,7 @@ use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
 use Zeusi\JsonSchemaExtractor\Mapper\ClassReferenceStrategy;
 use Zeusi\JsonSchemaExtractor\Mapper\SchemaMapperInterface;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapperOptions;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
@@ -120,7 +121,9 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [new PhpStanEnricher()],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper(ClassReferenceStrategy::Definitions)
+            new StandardSchemaMapper(new StandardSchemaMapperOptions(
+                classReferenceStrategy: ClassReferenceStrategy::Definitions
+            ))
         );
 
         $schema = $extractor->extract(PhpDocObject::class);

@@ -7,6 +7,8 @@ namespace Zeusi\JsonSchemaExtractor\Model\JsonSchema;
  */
 class Schema implements \JsonSerializable
 {
+    private ?string $schema = null;
+
     /** @var string|array<string>|null */
     private string|array|null $type = null;
     private ?string $ref = null;
@@ -62,6 +64,12 @@ class Schema implements \JsonSerializable
     private ?array $definitions = null;
 
     // Fluent Setters
+    public function setSchema(?string $schema): self
+    {
+        $this->schema = $schema;
+        return $this;
+    }
+
     public function setType(?SchemaType $type): self
     {
         $this->type = $type?->value;
@@ -268,6 +276,7 @@ class Schema implements \JsonSerializable
         }
 
         $data = [
+            '$schema'             => $this->schema,
             'type'                 => $this->type,
             'format'               => $this->format,
             'title'                => $this->title,
