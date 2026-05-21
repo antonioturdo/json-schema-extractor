@@ -8,8 +8,9 @@ use Zeusi\JsonSchemaExtractor\Context\ProcessingStackContext;
 use Zeusi\JsonSchemaExtractor\Discoverer\DiscovererInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\EnricherInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\Runtime\EnrichmentRuntime;
-use Zeusi\JsonSchemaExtractor\Mapper\SchemaMapperInterface;
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
+use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaMapperInterface;
+use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
+use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchemaInterface;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
@@ -24,7 +25,7 @@ use Zeusi\JsonSchemaExtractor\Serialization\SerializationStrategyInterface;
  * - discover the class shape through a {@see DiscovererInterface}
  * - enrich the discovered definition with metadata from optional {@see EnricherInterface} instances
  * - project the enriched definition to its serialized shape through a {@see SerializationStrategyInterface}
- * - map the projected definition to a JSON Schema representation through a {@see SchemaMapperInterface}
+ * - map the projected definition to a JSON Schema representation through a {@see JsonSchemaMapperInterface}
  */
 class SchemaExtractor
 {
@@ -35,7 +36,7 @@ class SchemaExtractor
         private readonly DiscovererInterface            $discoverer,
         private readonly iterable                       $enrichers,
         private readonly SerializationStrategyInterface $serializationStrategy,
-        private readonly SchemaMapperInterface          $mapper,
+        private readonly JsonSchemaMapperInterface      $mapper,
         private readonly SchemaExtractorOptions         $options = new SchemaExtractorOptions(),
     ) {}
 
@@ -61,19 +62,19 @@ class SchemaExtractor
     }
 
     /**
-     * Extracts a Schema object while tracking the recursion stack to avoid infinite loops.
+     * Extracts a JSON Schema object while tracking the recursion stack to avoid infinite loops.
      *
      * @param class-string $className
      *
      * @throws \LogicException
      * @throws \ReflectionException
      */
-    private function extractSubSchema(string $className, ExtractionContext $context): Schema
+    private function extractSubSchema(string $className, ExtractionContext $context): JsonSchemaInterface
     {
         $processingStack = $this->getProcessingStack($context);
         // Recursion break: if class is already in stack, emit a $ref
         if ($processingStack->has($className)) {
-            return (new Schema())->setRef("#/components/schemas/" . str_replace('\\', '.', $className));
+            return (new JsonSchema())->setRef("#/components/schemas/" . str_replace('\\', '.', $className));
         }
 
         $context = $context->with($processingStack->pushed($className));
@@ -94,7 +95,7 @@ class SchemaExtractor
         // 4. Map (Passing an anonymous function to allow the Mapper to recursively request schemas)
         return $this->mapper->map(
             $serializedDefinition,
-            function (string $class) use ($context): Schema {
+            function (string $class) use ($context): JsonSchemaInterface {
                 /** @var class-string $class */
                 return $this->extractSubSchema($class, $context);
             }

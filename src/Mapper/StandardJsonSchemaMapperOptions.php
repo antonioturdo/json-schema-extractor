@@ -2,7 +2,7 @@
 
 namespace Zeusi\JsonSchemaExtractor\Mapper;
 
-final class StandardSchemaMapperOptions
+final class StandardJsonSchemaMapperOptions
 {
     public function __construct(
         public readonly JsonSchemaDialect $dialect = JsonSchemaDialect::Draft7,

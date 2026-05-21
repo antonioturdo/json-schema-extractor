@@ -2,7 +2,8 @@
 
 namespace Zeusi\JsonSchemaExtractor\Mapper;
 
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
+use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
+use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchemaInterface;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\SchemaType;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
@@ -23,16 +24,16 @@ use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
 
 /**
- * The standard mapper that translates the serialized payload definition into a Draft-7 JSON Schema array.
+ * The standard mapper that translates the serialized payload definition into a JSON Schema document.
  *
- * It uses the internal Schema object to easily build and compose the output.
+ * It uses the internal JsonSchema object to easily build and compose the output.
  */
-class StandardSchemaMapper implements SchemaMapperInterface
+class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
 {
-    /** @var callable(string): Schema */
+    /** @var callable(string): JsonSchemaInterface */
     private $schemaProvider;
 
-    /** @var array<string, Schema> */
+    /** @var array<string, JsonSchema> */
     private array $definitions = [];
 
     /** @var array<string, string> */
@@ -46,10 +47,10 @@ class StandardSchemaMapper implements SchemaMapperInterface
     private ?string $rootClassName = null;
 
     public function __construct(
-        private readonly StandardSchemaMapperOptions $options = new StandardSchemaMapperOptions()
+        private readonly StandardJsonSchemaMapperOptions $options = new StandardJsonSchemaMapperOptions()
     ) {}
 
-    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): Schema
+    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): JsonSchema
     {
         $isRootMap = $this->mapDepth === 0;
         if ($isRootMap) {
@@ -71,7 +72,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
             }
 
             if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions && $this->definitions !== []) {
-                $schema->setDefinitions($this->definitions);
+                $this->applyDefinitions($schema);
             }
 
             $this->rootClassName = null;
@@ -96,24 +97,24 @@ class StandardSchemaMapper implements SchemaMapperInterface
     /**
      * @param list<class-string> $concreteClasses
      */
-    private function mapConcreteClasses(array $concreteClasses): Schema
+    private function mapConcreteClasses(array $concreteClasses): JsonSchema
     {
         $schemas = [];
         foreach ($concreteClasses as $className) {
             if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
                 $this->registerDefinition($className);
-                $schemas[] = (new Schema())->setRef($this->definitionRef($className));
+                $schemas[] = (new JsonSchema())->setRef($this->definitionRef($className));
             } else {
-                $schemas[] = ($this->schemaProvider)($className);
+                $schemas[] = $this->provideNestedSchema($className);
             }
         }
 
-        return (new Schema())->setOneOf($schemas);
+        return (new JsonSchema())->setOneOf($schemas);
     }
 
-    private function mapObjectShape(SerializedObjectDefinition $definition): Schema
+    private function mapObjectShape(SerializedObjectDefinition $definition): JsonSchema
     {
-        $schema = (new Schema())
+        $schema = (new JsonSchema())
             ->setType(SchemaType::OBJECT);
 
         if ($definition->additionalProperties !== null) {
@@ -133,7 +134,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
             if ($type !== null) {
                 $propertySchema = $this->mapType($type);
             } else {
-                $propertySchema = new Schema();
+                $propertySchema = new JsonSchema();
             }
 
             $schema->addProperty(
@@ -146,7 +147,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
         return $schema;
     }
 
-    private function mapType(Type $type): Schema
+    private function mapType(Type $type): JsonSchema
     {
         if ($type instanceof DecoratedType) {
             $schema = $this->mapType($type->type);
@@ -166,14 +167,14 @@ class StandardSchemaMapper implements SchemaMapperInterface
         }
 
         if ($type instanceof ArrayType) {
-            $schema = (new Schema())->setType(SchemaType::ARRAY);
+            $schema = (new JsonSchema())->setType(SchemaType::ARRAY);
             $schema->setItems($this->mapType($type->type));
             return $schema;
         }
 
         if ($type instanceof MapType) {
             $valueSchema = $this->mapType($type->type);
-            return (new Schema())
+            return (new JsonSchema())
                 ->setType(SchemaType::OBJECT)
                 ->setAdditionalProperties($valueSchema);
         }
@@ -195,7 +196,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
         }
 
         if ($type instanceof UnknownType) {
-            return new Schema();
+            return new JsonSchema();
         }
 
         if ($type instanceof EnumType) {
@@ -206,14 +207,14 @@ class StandardSchemaMapper implements SchemaMapperInterface
             return $this->mapClassLikeType($type);
         }
 
-        return new Schema();
+        return new JsonSchema();
     }
 
-    private function mapBuiltinType(BuiltinType $type): Schema
+    private function mapBuiltinType(BuiltinType $type): JsonSchema
     {
         // mixed value => empty schema
         if ($type->name === 'mixed') {
-            return new Schema();
+            return new JsonSchema();
         }
 
         $schemaType = match ($type->name) {
@@ -227,10 +228,10 @@ class StandardSchemaMapper implements SchemaMapperInterface
             default => throw new \LogicException(\sprintf('Unsupported builtin type "%s".', $type->name)),
         };
 
-        $schema = (new Schema())->setType($schemaType);
+        $schema = (new JsonSchema())->setType($schemaType);
 
         if ($type->name === 'array' || $type->name === 'iterable') {
-            $schema->setItems(new Schema());
+            $schema->setItems(new JsonSchema());
         }
 
         if ($type->name === 'object') {
@@ -240,7 +241,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
         return $schema;
     }
 
-    private function mapClassLikeType(ClassLikeType $type): Schema
+    private function mapClassLikeType(ClassLikeType $type): JsonSchema
     {
         $className = $type->name;
 
@@ -253,30 +254,51 @@ class StandardSchemaMapper implements SchemaMapperInterface
 
         if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
             if ($className === $this->rootClassName) {
-                return (new Schema())->setRef('#');
+                return (new JsonSchema())->setRef('#');
             }
 
             $this->registerDefinition($className);
-            return (new Schema())->setRef($this->definitionRef($className));
+            return (new JsonSchema())->setRef($this->definitionRef($className));
         }
 
-        return ($this->schemaProvider)($className);
+        return $this->provideNestedSchema($className);
     }
 
-    private function mapEnumType(EnumType $type): Schema
+    private function mapEnumType(EnumType $type): JsonSchema
     {
         if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
             $this->registerEnumDefinition($type->className);
-            return (new Schema())->setRef($this->definitionRef($type->className));
+            return (new JsonSchema())->setRef($this->definitionRef($type->className));
         }
 
         return $this->buildEnumSchema($type->className);
     }
 
+    private function applyDefinitions(JsonSchema $schema): void
+    {
+        match ($this->options->dialect) {
+            JsonSchemaDialect::Draft7 => $schema->setDefinitions($this->definitions),
+            JsonSchemaDialect::Draft202012 => $schema->setDefs($this->definitions),
+        };
+    }
+
+    /**
+     * @param class-string $className
+     */
+    private function provideNestedSchema(string $className): JsonSchema
+    {
+        $schema = ($this->schemaProvider)($className);
+        if (!$schema instanceof JsonSchema) {
+            throw new \LogicException('StandardJsonSchemaMapper can only compose nested schemas produced as JsonSchema instances.');
+        }
+
+        return $schema;
+    }
+
     /**
      * @param class-string<\UnitEnum> $enumClass
      */
-    private function buildEnumSchema(string $enumClass): Schema
+    private function buildEnumSchema(string $enumClass): JsonSchema
     {
         $reflectionEnum = new \ReflectionEnum($enumClass);
         $cases = [];
@@ -284,7 +306,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
             $cases[] = $case instanceof \ReflectionEnumBackedCase ? $case->getBackingValue() : $case->getName();
         }
 
-        return (new Schema())
+        return (new JsonSchema())
             ->setType(!empty($cases) && \is_int($cases[0]) ? SchemaType::INTEGER : SchemaType::STRING)
             ->setEnum($cases);
     }
@@ -321,7 +343,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
         }
 
         $this->buildingDefinitions[$className] = true;
-        $this->definitions[$definitionName] = ($this->schemaProvider)($className);
+        $this->definitions[$definitionName] = $this->provideNestedSchema($className);
         unset($this->buildingDefinitions[$className]);
     }
 
@@ -330,7 +352,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
      */
     private function definitionRef(string $className): string
     {
-        return '#/definitions/' . $this->definitionName($className);
+        return $this->options->dialect->definitionsRefPrefix() . $this->definitionName($className);
     }
 
     /**
@@ -355,7 +377,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
         return $definitionName;
     }
 
-    private function mapUnionType(UnionType $type): Schema
+    private function mapUnionType(UnionType $type): JsonSchema
     {
         $schemas = [];
 
@@ -375,18 +397,18 @@ class StandardSchemaMapper implements SchemaMapperInterface
 
         $collapsedTypes = $this->collapseToTypeArrayIfPossible($finalSchemas);
         if ($collapsedTypes !== null) {
-            return (new Schema())->setTypeUnion($collapsedTypes);
+            return (new JsonSchema())->setTypeUnion($collapsedTypes);
         }
 
         $semantics = $type->semantics ?? $this->inferUnionSemantics($finalSchemas);
         return match ($semantics) {
-            UnionSemantics::OneOf => (new Schema())->setOneOf($finalSchemas),
-            UnionSemantics::AnyOf => (new Schema())->setAnyOf($finalSchemas),
+            UnionSemantics::OneOf => (new JsonSchema())->setOneOf($finalSchemas),
+            UnionSemantics::AnyOf => (new JsonSchema())->setAnyOf($finalSchemas),
         };
     }
 
     /**
-     * @param array<Schema> $schemas
+     * @param array<JsonSchema> $schemas
      */
     private function inferUnionSemantics(array $schemas): UnionSemantics
     {
@@ -411,7 +433,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
     /**
      * @return list<string>|null
      */
-    private function extractJsonTypes(Schema $schema): ?array
+    private function extractJsonTypes(JsonSchema $schema): ?array
     {
         $serialized = $schema->jsonSerialize();
         if (!\is_array($serialized)) {
@@ -462,7 +484,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
         return false;
     }
 
-    private function mapIntersectionType(IntersectionType $type): Schema
+    private function mapIntersectionType(IntersectionType $type): JsonSchema
     {
         $schemas = [];
 
@@ -480,11 +502,11 @@ class StandardSchemaMapper implements SchemaMapperInterface
             return $finalSchemas[0];
         }
 
-        return (new Schema())->setAllOf($finalSchemas);
+        return (new JsonSchema())->setAllOf($finalSchemas);
     }
 
     /**
-     * @param array<Schema> $schemas
+     * @param array<JsonSchema> $schemas
      * @return array<SchemaType>|null
      */
     private function collapseToTypeArrayIfPossible(array $schemas): ?array
@@ -528,7 +550,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
         return array_values($types);
     }
 
-    private function applyTypeConstraints(Schema $schema, TypeConstraints $constraints): void
+    private function applyTypeConstraints(JsonSchema $schema, TypeConstraints $constraints): void
     {
         if ($constraints->enum !== []) {
             $schema->setEnum($constraints->enum);
@@ -568,7 +590,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
         }
     }
 
-    private function applyTypeAnnotations(Schema $schema, TypeAnnotations $annotations): void
+    private function applyTypeAnnotations(JsonSchema $schema, TypeAnnotations $annotations): void
     {
         if ($annotations->title !== null) {
             $schema->setTitle($annotations->title);
@@ -599,7 +621,7 @@ class StandardSchemaMapper implements SchemaMapperInterface
      * Avoids emitting defaults that are known to be incompatible with the generated schema.
      * TODO: Extend this guard to the other JSON Schema primitive types.
      */
-    private function canApplyDefault(Schema $schema, mixed $default): bool
+    private function canApplyDefault(JsonSchema $schema, mixed $default): bool
     {
         $serialized = $schema->jsonSerialize();
         if (!\is_array($serialized)) {

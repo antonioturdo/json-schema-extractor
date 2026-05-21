@@ -14,7 +14,7 @@ use Zeusi\JsonSchemaExtractor\Enricher\EnricherInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpDocumentorEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\SymfonyValidationEnricher;
-use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
@@ -66,7 +66,7 @@ class SchemaCompositionTest extends TestCase
             new ReflectionDiscoverer(),
             $enrichers,
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(CollectionValidatedObject::class);
@@ -97,7 +97,7 @@ class SchemaCompositionTest extends TestCase
                 new SymfonyValidationEnricher(new LazyLoadingMetadataFactory(new ValidatorAttributeLoader())),
             ],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(ConflictingCollectionValidatedObject::class);
@@ -117,7 +117,7 @@ class SchemaCompositionTest extends TestCase
             new ReflectionDiscoverer(),
             [new PhpStanEnricher()],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(JsonSerializablePhpDocObject::class);
@@ -137,7 +137,7 @@ class SchemaCompositionTest extends TestCase
             new ReflectionDiscoverer(),
             [new PhpStanEnricher()],
             new SymfonySerializerStrategy(new ClassMetadataFactory(new SerializerAttributeLoader())),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(JsonSerializablePhpDocObject::class);
@@ -157,7 +157,7 @@ class SchemaCompositionTest extends TestCase
             new ReflectionDiscoverer(),
             [new PhpStanEnricher()],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(JsonSerializableClassUnionPhpDocObject::class);
@@ -181,7 +181,7 @@ class SchemaCompositionTest extends TestCase
             new ReflectionDiscoverer(),
             $enrichers,
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract($className);

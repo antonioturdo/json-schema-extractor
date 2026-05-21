@@ -12,10 +12,10 @@ use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpDocumentorEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
 use Zeusi\JsonSchemaExtractor\Mapper\ClassReferenceStrategy;
-use Zeusi\JsonSchemaExtractor\Mapper\SchemaMapperInterface;
-use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
-use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapperOptions;
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
+use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaMapperInterface;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapperOptions;
+use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\SchemaExtractorOptions;
@@ -30,7 +30,7 @@ use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorCat;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\PhpDocObject;
 
 #[CoversClass(SchemaExtractor::class)]
-#[CoversClass(StandardSchemaMapper::class)]
+#[CoversClass(StandardJsonSchemaMapper::class)]
 class SchemaExtractorTest extends TestCase
 {
     /**
@@ -42,7 +42,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(BasicObject::class);
@@ -61,7 +61,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper(),
+            new StandardJsonSchemaMapper(),
         );
 
         $schema = $extractor->extract(AdditionalPropertiesObject::class);
@@ -80,7 +80,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper(),
+            new StandardJsonSchemaMapper(),
             new SchemaExtractorOptions(defaultAdditionalProperties: true)
         );
 
@@ -100,7 +100,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [new PhpDocumentorEnricher()],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(PhpDocObject::class);
@@ -121,7 +121,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [new PhpStanEnricher()],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper(new StandardSchemaMapperOptions(
+            new StandardJsonSchemaMapper(new StandardJsonSchemaMapperOptions(
                 classReferenceStrategy: ClassReferenceStrategy::Definitions
             ))
         );
@@ -151,7 +151,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [],
             $serializationStrategy,
-            new StandardSchemaMapper(),
+            new StandardJsonSchemaMapper(),
         );
 
         $context = (new ExtractionContext())->with(new SymfonySerializerContext());
@@ -185,7 +185,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [new PhpDocumentorEnricher()],
             $serializationStrategy,
-            new StandardSchemaMapper(),
+            new StandardJsonSchemaMapper(),
         );
 
         $context = (new ExtractionContext())->with(new SymfonySerializerContext());
@@ -221,7 +221,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [new PhpStanEnricher()],
             $serializationStrategy,
-            new StandardSchemaMapper(),
+            new StandardJsonSchemaMapper(),
         );
 
         $context = (new ExtractionContext())->with(new SymfonySerializerContext());
@@ -243,7 +243,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(BasicObject::class);
@@ -268,7 +268,7 @@ class SchemaExtractorTest extends TestCase
             new ReflectionDiscoverer(),
             [],
             new JsonEncodeSerializationStrategy(),
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract(BasicObject::class);
@@ -284,7 +284,7 @@ class SchemaExtractorTest extends TestCase
      */
     public function testGenerateBreaksCircularReferencesWhenClassSchemasAreInlined(): void
     {
-        $mapper = new RecursionProbeMapper(CircularObject::class);
+        $mapper = new RecursionProbeJsonSchemaMapper(CircularObject::class);
         $extractor = new SchemaExtractor(
             new ReflectionDiscoverer(),
             [],
@@ -304,7 +304,7 @@ class SchemaExtractorTest extends TestCase
     }
 }
 
-final class RecursionProbeMapper implements SchemaMapperInterface
+final class RecursionProbeJsonSchemaMapper implements JsonSchemaMapperInterface
 {
     public int $mapCalls = 0;
 
@@ -315,14 +315,19 @@ final class RecursionProbeMapper implements SchemaMapperInterface
         private readonly string $recursiveClass
     ) {}
 
-    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): Schema
+    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): JsonSchema
     {
         ++$this->mapCalls;
 
         if ($this->mapCalls > 1) {
-            return (new Schema())->setTitle('recursion guard failed');
+            return (new JsonSchema())->setTitle('recursion guard failed');
         }
 
-        return (new Schema())->addProperty('child', $schemaProvider($this->recursiveClass));
+        $childSchema = $schemaProvider($this->recursiveClass);
+        if (!$childSchema instanceof JsonSchema) {
+            throw new \LogicException('Expected recursive schema provider to return a Schema instance.');
+        }
+
+        return (new JsonSchema())->addProperty('child', $childSchema);
     }
 }
