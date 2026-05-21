@@ -24,10 +24,13 @@ use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
+use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
 use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
+use Zeusi\JsonSchemaExtractor\Model\Type\MapType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Types;
+use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonSerializableProjection;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorCat;
@@ -106,13 +109,34 @@ class SymfonySerializerStrategyTest extends TestCase
         $this->assertStringField($this->requireSerializedProperty($definition, 'timezone'));
         $this->assertStringField($this->requireSerializedProperty($definition, 'duration'), 'duration');
         $this->assertStringField($this->requireSerializedProperty($definition, 'customDuration'));
-        $this->assertStringField($this->requireSerializedProperty($definition, 'message'));
+        $this->assertPlainStringField($this->requireSerializedProperty($definition, 'message'));
         $this->assertStringField($this->requireSerializedProperty($definition, 'file'), pattern: '^data:');
         $this->assertProblemShape($this->requireSerializedProperty($definition, 'violations'), ['type', 'title', 'violations']);
+        $this->assertFormErrorShape($this->requireSerializedProperty($definition, 'form'));
         $this->assertProblemShape($this->requireSerializedProperty($definition, 'problem'), ['type', 'title', 'status', 'detail']);
         $this->assertStringField($this->requireSerializedProperty($definition, 'uuid'), 'uuid');
         $this->assertStringField($this->requireSerializedProperty($definition, 'ulid'));
         $this->assertStringField($this->requireSerializedProperty($definition, 'base58Uuid'));
+    }
+
+    public function testProjectMapsSymfonyNumberNormalizerTypesToStringsWhenAvailable(): void
+    {
+        if (!class_exists('GMP')) {
+            self::markTestSkipped('The GMP extension is required for this test.');
+        }
+
+        if (!class_exists('Symfony\Component\Serializer\Normalizer\NumberNormalizer')) {
+            class_alias(NumberNormalizerStub::class, 'Symfony\Component\Serializer\Normalizer\NumberNormalizer');
+        }
+
+        $definition = new ClassDefinition(className: SerializerObject::class);
+        $amount = new PropertyDefinition('amount');
+        $amount->setType(new ClassLikeType('GMP'));
+        $definition->addProperty($amount);
+
+        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext()));
+
+        $this->assertPlainStringField($this->requireSerializedProperty($projectedDefinition, 'amount'));
     }
 
     public function testProjectUsesSymfonySerializerContextForKnownNormalizerFormats(): void
@@ -212,6 +236,12 @@ class SymfonySerializerStrategyTest extends TestCase
         self::assertSame($pattern, $decorated->constraints->pattern);
     }
 
+    private function assertPlainStringField(SerializedPropertyDefinition $field): void
+    {
+        $type = $this->requireType($field->type, 'Expected field to have a type expression.');
+        $this->assertBuiltin($type, 'string');
+    }
+
     private function assertArrayOfStringField(SerializedPropertyDefinition $field, ?string $format = null): void
     {
         $array = $this->unwrapDecorated($this->requireType($field->type, 'Expected field to have a type expression.'));
@@ -252,6 +282,46 @@ class SymfonySerializerStrategyTest extends TestCase
         }
     }
 
+    private function assertFormErrorShape(SerializedPropertyDefinition $field): void
+    {
+        $expr = $this->unwrapDecorated($this->requireType($field->type, 'Expected form error field to have a type expression.'));
+        self::assertInstanceOf(SerializedObjectType::class, $expr);
+
+        $shape = $expr->shape;
+        self::assertFalse($shape->additionalProperties);
+
+        foreach (['title', 'type'] as $requiredField) {
+            self::assertTrue($this->requireSerializedProperty($shape, $requiredField)->required);
+        }
+
+        $code = $this->requireSerializedProperty($shape, 'code');
+        $errorsField = $this->requireSerializedProperty($shape, 'errors');
+        $children = $this->requireSerializedProperty($shape, 'children');
+
+        self::assertTrue($code->required);
+        self::assertTrue($errorsField->required);
+        self::assertFalse($children->required);
+        self::assertInstanceOf(UnionType::class, $this->requireType($code->type, 'Expected code field to have a type expression.'));
+        self::assertSame(['int', 'null'], $this->collectTypeNames($code->type));
+
+        $errors = $this->unwrapDecorated($this->requireType(
+            $errorsField->type,
+            'Expected form errors field to have a type expression.'
+        ));
+        self::assertInstanceOf(ArrayType::class, $errors);
+
+        $errorItem = $this->unwrapDecorated($errors->type);
+        self::assertInstanceOf(SerializedObjectType::class, $errorItem);
+        self::assertTrue($this->requireSerializedProperty($errorItem->shape, 'message')->required);
+        self::assertTrue($this->requireSerializedProperty($errorItem->shape, 'cause')->required);
+
+        $childrenType = $this->unwrapDecorated($this->requireType(
+            $children->type,
+            'Expected form children field to have a type expression.'
+        ));
+        self::assertInstanceOf(MapType::class, $childrenType);
+    }
+
     private function requireSerializedProperty(SerializedObjectDefinition $shape, string $propertyName): SerializedPropertyDefinition
     {
         $property = $shape->properties[$propertyName] ?? null;
@@ -270,3 +340,5 @@ class SymfonySerializerStrategyTest extends TestCase
         return $type->shape;
     }
 }
+
+final class NumberNormalizerStub {}

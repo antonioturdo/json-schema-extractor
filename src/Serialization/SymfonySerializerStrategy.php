@@ -13,6 +13,7 @@ use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateIntervalNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
+use Symfony\Component\Serializer\Normalizer\FormErrorNormalizer;
 use Symfony\Component\Serializer\Normalizer\TranslatableNormalizer;
 use Symfony\Component\Serializer\Normalizer\UidNormalizer;
 use Zeusi\JsonSchemaExtractor\Context\ExtractionContext;
@@ -233,8 +234,12 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
             );
         }
 
+        if ($this->isSymfonyNumberType($type->name)) {
+            return new BuiltinType('string');
+        }
+
         if ($this->isTranslatableType($type->name)) {
-            return new DecoratedType(new BuiltinType('string'));
+            return new BuiltinType('string');
         }
 
         if ($this->isDataUriType($type->name)) {
@@ -246,6 +251,10 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
 
         if ($this->isConstraintViolationListType($type->name)) {
             return $this->createConstraintViolationListType();
+        }
+
+        if ($this->isFormInterfaceType($type->name)) {
+            return $this->createFormErrorType();
         }
 
         if ($this->isFlattenExceptionType($type->name)) {
@@ -335,6 +344,24 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
     /**
      * @param class-string $className
      */
+    private function isSymfonyNumberType(string $className): bool
+    {
+        if (!class_exists('Symfony\Component\Serializer\Normalizer\NumberNormalizer')) {
+            return false;
+        }
+
+        foreach (['BcMath\Number', 'GMP'] as $numberClass) {
+            if (class_exists($numberClass) && is_a($className, $numberClass, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param class-string $className
+     */
     private function isConstraintViolationListType(string $className): bool
     {
         $constraintViolationListInterface = 'Symfony\Component\Validator\ConstraintViolationListInterface';
@@ -343,6 +370,19 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
         }
 
         return is_a($className, $constraintViolationListInterface, true);
+    }
+
+    /**
+     * @param class-string $className
+     */
+    private function isFormInterfaceType(string $className): bool
+    {
+        $formInterface = 'Symfony\Component\Form\FormInterface';
+        if (!interface_exists($formInterface) || !class_exists(FormErrorNormalizer::class)) {
+            return false;
+        }
+
+        return is_a($className, $formInterface, true);
     }
 
     /**
@@ -455,6 +495,42 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
     private function createConstraintViolationListType(): Type
     {
         return $this->createProblemType(withViolations: true);
+    }
+
+    private function createFormErrorType(): Type
+    {
+        $stringType = new BuiltinType('string');
+        $mixedType = new BuiltinType('mixed');
+
+        $errorShape = new SerializedObjectDefinition(
+            properties: [
+                'message' => $this->createSerializedProperty('message', $stringType, true),
+                'cause' => $this->createSerializedProperty('cause', $mixedType, true),
+            ],
+            additionalProperties: false
+        );
+
+        $childShape = new SerializedObjectDefinition(
+            properties: [
+                'errors' => $this->createSerializedProperty('errors', new ArrayType(new SerializedObjectType($errorShape)), true),
+                'children' => $this->createSerializedProperty('children', new MapType($mixedType)),
+            ],
+            additionalProperties: false
+        );
+
+        return new SerializedObjectType(new SerializedObjectDefinition(
+            properties: [
+                'title' => $this->createSerializedProperty('title', $stringType, true),
+                'type' => $this->createSerializedProperty('type', $stringType, true),
+                'code' => $this->createSerializedProperty('code', new UnionType([
+                    new BuiltinType('int'),
+                    new BuiltinType('null'),
+                ]), true),
+                'errors' => $this->createSerializedProperty('errors', new ArrayType(new SerializedObjectType($errorShape)), true),
+                'children' => $this->createSerializedProperty('children', new MapType(new SerializedObjectType($childShape))),
+            ],
+            additionalProperties: false
+        ));
     }
 
     private function createProblemType(bool $withViolations = false): Type
