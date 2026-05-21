@@ -12,7 +12,7 @@ use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpDocumentorEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\SymfonyValidationEnricher;
-use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\BasicObject;
@@ -38,7 +38,7 @@ $extractor = new SchemaExtractor(
     ],
     // new SymfonySerializerStrategy($classMetadataFactory, $nameConverter),
     new Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy(),
-    new StandardSchemaMapper(),
+    new StandardJsonSchemaMapper(),
 );
 
 // Classes to analyze

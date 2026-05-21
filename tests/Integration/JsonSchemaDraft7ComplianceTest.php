@@ -13,7 +13,7 @@ use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
 use Zeusi\JsonSchemaExtractor\Enricher\EnricherInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\SymfonyValidationEnricher;
-use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
 use Zeusi\JsonSchemaExtractor\Serialization\SerializationStrategyInterface;
@@ -44,7 +44,7 @@ final class JsonSchemaDraft7ComplianceTest extends TestCase
             new ReflectionDiscoverer(),
             $enrichers,
             $serializationStrategy,
-            new StandardSchemaMapper()
+            new StandardJsonSchemaMapper()
         );
 
         $schema = $extractor->extract($className);

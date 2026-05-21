@@ -4,15 +4,15 @@ namespace Zeusi\JsonSchemaExtractor\Tests\Unit\Model\JsonSchema;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Schema;
+use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\SchemaType;
 
-#[CoversClass(Schema::class)]
-class SchemaTest extends TestCase
+#[CoversClass(JsonSchema::class)]
+class JsonSchemaTest extends TestCase
 {
     public function testJsonSerializeReturnsReferenceOnlySchema(): void
     {
-        $schema = (new Schema())
+        $schema = (new JsonSchema())
             ->setRef('#/definitions/User')
             ->setType(SchemaType::OBJECT)
             ->setTitle('Ignored');
@@ -22,16 +22,16 @@ class SchemaTest extends TestCase
 
     public function testJsonSerializeIncludesNonReferenceKeywords(): void
     {
-        $schema = (new Schema())
+        $schema = (new JsonSchema())
             ->setType(SchemaType::OBJECT)
             ->setFormat('custom-format')
             ->setTitle('User')
             ->setDescription('A user schema')
-            ->addProperty('id', (new Schema())->setType(SchemaType::INTEGER), true)
-            ->setItems((new Schema())->setType(SchemaType::STRING))
-            ->setOneOf([(new Schema())->setType(SchemaType::STRING)])
-            ->setAnyOf([(new Schema())->setType(SchemaType::INTEGER)])
-            ->setAllOf([(new Schema())->setType(SchemaType::OBJECT)])
+            ->addProperty('id', (new JsonSchema())->setType(SchemaType::INTEGER), true)
+            ->setItems((new JsonSchema())->setType(SchemaType::STRING))
+            ->setOneOf([(new JsonSchema())->setType(SchemaType::STRING)])
+            ->setAnyOf([(new JsonSchema())->setType(SchemaType::INTEGER)])
+            ->setAllOf([(new JsonSchema())->setType(SchemaType::OBJECT)])
             ->setEnum(['active', 'inactive'])
             ->setMinLength(1)
             ->setMaxLength(10)
@@ -46,8 +46,8 @@ class SchemaTest extends TestCase
             ->setDeprecated(true)
             ->setExamples(['example'])
             ->setDefault('active')
-            ->setAdditionalProperties((new Schema())->setType(SchemaType::STRING))
-            ->setDefinitions(['Address' => (new Schema())->setType(SchemaType::OBJECT)]);
+            ->setAdditionalProperties((new JsonSchema())->setType(SchemaType::STRING))
+            ->setDefinitions(['Address' => (new JsonSchema())->setType(SchemaType::OBJECT)]);
 
         $serialized = $schema->jsonSerialize();
 
@@ -89,5 +89,17 @@ class SchemaTest extends TestCase
                 'Address' => ['type' => 'object'],
             ],
         ], $serialized);
+    }
+
+    public function testJsonSerializeCanUseDefsKeyword(): void
+    {
+        $schema = (new JsonSchema())
+            ->setDefs(['Address' => (new JsonSchema())->setType(SchemaType::OBJECT)]);
+
+        self::assertSame([
+            '$defs' => [
+                'Address' => ['type' => 'object'],
+            ],
+        ], $schema->jsonSerialize());
     }
 }

@@ -5,7 +5,7 @@ namespace Zeusi\JsonSchemaExtractor\Model\JsonSchema;
 /**
  * Representation of a JSON Schema node.
  */
-class Schema implements \JsonSerializable
+class JsonSchema implements JsonSchemaInterface
 {
     private ?string $schema = null;
 
@@ -16,18 +16,18 @@ class Schema implements \JsonSerializable
     private ?string $title = null;
     private ?string $description = null;
 
-    /** @var array<string, Schema>|null */
+    /** @var array<string, JsonSchema>|null */
     private ?array $properties = null;
 
-    private ?Schema $items = null;
+    private ?JsonSchema $items = null;
 
-    /** @var array<Schema>|null */
+    /** @var array<JsonSchema>|null */
     private ?array $oneOf = null;
 
-    /** @var array<Schema>|null */
+    /** @var array<JsonSchema>|null */
     private ?array $anyOf = null;
 
-    /** @var array<Schema>|null */
+    /** @var array<JsonSchema>|null */
     private ?array $allOf = null;
 
     /** @var array<string>|null */
@@ -58,10 +58,13 @@ class Schema implements \JsonSerializable
     private ?array $examples = null;
     private mixed $default = null;
 
-    private bool|Schema|null $additionalProperties = null;
+    private bool|JsonSchema|null $additionalProperties = null;
 
-    /** @var array<string, Schema>|null */
+    /** @var array<string, JsonSchema>|null */
     private ?array $definitions = null;
+
+    /** @var array<string, JsonSchema>|null */
+    private ?array $defs = null;
 
     // Fluent Setters
     public function setSchema(?string $schema): self
@@ -111,7 +114,7 @@ class Schema implements \JsonSerializable
         return $this;
     }
 
-    public function addProperty(string $name, Schema $schema, bool $required = false): self
+    public function addProperty(string $name, JsonSchema $schema, bool $required = false): self
     {
         $this->properties[$name] = $schema;
         if ($required) {
@@ -120,7 +123,7 @@ class Schema implements \JsonSerializable
         return $this;
     }
 
-    public function setItems(?Schema $items): self
+    public function setItems(?JsonSchema $items): self
     {
         $this->items = $items;
         return $this;
@@ -162,18 +165,27 @@ class Schema implements \JsonSerializable
         return $this;
     }
 
-    public function setAdditionalProperties(bool|Schema|null $additionalProperties): self
+    public function setAdditionalProperties(bool|JsonSchema|null $additionalProperties): self
     {
         $this->additionalProperties = $additionalProperties;
         return $this;
     }
 
     /**
-     * @param array<string, Schema>|null $definitions
+     * @param array<string, JsonSchema>|null $definitions
      */
     public function setDefinitions(?array $definitions): self
     {
         $this->definitions = $definitions;
+        return $this;
+    }
+
+    /**
+     * @param array<string, JsonSchema>|null $defs
+     */
+    public function setDefs(?array $defs): self
+    {
+        $this->defs = $defs;
         return $this;
     }
 
@@ -281,11 +293,11 @@ class Schema implements \JsonSerializable
             'format'               => $this->format,
             'title'                => $this->title,
             'description'          => $this->description,
-            'properties'           => $this->properties ? array_map(fn(Schema $s) => $s->jsonSerialize(), $this->properties) : null,
+            'properties'           => $this->properties ? array_map(fn(JsonSchema $s) => $s->jsonSerialize(), $this->properties) : null,
             'items'                => $this->items ? $this->items->jsonSerialize() : null,
-            'oneOf'                => $this->oneOf ? array_map(fn(Schema $s) => $s->jsonSerialize(), $this->oneOf) : null,
-            'anyOf'                => $this->anyOf ? array_map(fn(Schema $s) => $s->jsonSerialize(), $this->anyOf) : null,
-            'allOf'                => $this->allOf ? array_map(fn(Schema $s) => $s->jsonSerialize(), $this->allOf) : null,
+            'oneOf'                => $this->oneOf ? array_map(fn(JsonSchema $s) => $s->jsonSerialize(), $this->oneOf) : null,
+            'anyOf'                => $this->anyOf ? array_map(fn(JsonSchema $s) => $s->jsonSerialize(), $this->anyOf) : null,
+            'allOf'                => $this->allOf ? array_map(fn(JsonSchema $s) => $s->jsonSerialize(), $this->allOf) : null,
             'required'             => $this->required,
             'enum'                 => $this->enum,
             'minLength'            => $this->minLength,
@@ -302,7 +314,8 @@ class Schema implements \JsonSerializable
             'examples'             => $this->examples,
             'default'              => $this->default,
             'additionalProperties' => $this->additionalProperties instanceof self ? $this->additionalProperties->jsonSerialize() : $this->additionalProperties,
-            'definitions'          => $this->definitions ? array_map(fn(Schema $s) => $s->jsonSerialize(), $this->definitions) : null,
+            'definitions'          => $this->definitions ? array_map(fn(JsonSchema $s) => $s->jsonSerialize(), $this->definitions) : null,
+            '$defs'                => $this->defs ? array_map(fn(JsonSchema $s) => $s->jsonSerialize(), $this->defs) : null,
         ];
 
         // remove null values

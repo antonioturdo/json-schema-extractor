@@ -62,7 +62,7 @@ Create an extractor:
 ```php
 use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
-use Zeusi\JsonSchemaExtractor\Mapper\StandardSchemaMapper;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
 
@@ -72,7 +72,7 @@ $extractor = new SchemaExtractor(
         new PhpStanEnricher(),
     ],
     new JsonEncodeSerializationStrategy(),
-    new StandardSchemaMapper(),
+    new StandardJsonSchemaMapper(),
 );
 
 $schema = $extractor->extract(UserProfile::class);
@@ -172,14 +172,31 @@ To create a custom serialization strategy implement [`SerializationStrategyInter
 
 ### Mapper
 
-[`StandardSchemaMapper`](src/Mapper/StandardSchemaMapper.php) is the default and currently only mapper. It converts the serialized payload model to Draft-7 JSON Schema.
-By default, class-backed DTOs and enums are collected under `definitions` and referenced with `$ref`.
-If you prefer those schemas to be expanded at the usage site, configure [`StandardSchemaMapperOptions`](src/Mapper/StandardSchemaMapperOptions.php) with the inline class reference strategy.
-The same options object also declares the JSON Schema dialect and whether the root `$schema` keyword should be emitted.
+[`StandardJsonSchemaMapper`](src/Mapper/StandardJsonSchemaMapper.php) is the default and currently only mapper. It converts the serialized payload model to JSON Schema.
+By default, class-backed DTOs and enums are collected in reusable definitions and referenced with `$ref`.
+The emitted definition keyword follows the configured dialect: `definitions` for Draft-7 and `$defs` for Draft 2020-12.
 
-Nested objects and complex structures are handled recursively. With [`ClassReferenceStrategy::Definitions`](src/Mapper/ClassReferenceStrategy.php), class-backed types are emitted once under `definitions` and reused through `$ref`. Circular references are always broken with `$ref`.
+Nested objects and complex structures are handled recursively. With [`ClassReferenceStrategy::Definitions`](src/Mapper/ClassReferenceStrategy.php), class-backed types are emitted once as reusable definitions and reused through `$ref`. Circular references are always broken with `$ref`.
 
-To create a custom mapper implement [`SchemaMapperInterface`](src/Mapper/SchemaMapperInterface.php).
+Mapper-level schema policy is configured through [`StandardJsonSchemaMapperOptions`](src/Mapper/StandardJsonSchemaMapperOptions.php):
+
+```php
+use Zeusi\JsonSchemaExtractor\Mapper\ClassReferenceStrategy;
+use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaDialect;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
+use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapperOptions;
+
+$mapper = new StandardJsonSchemaMapper(new StandardJsonSchemaMapperOptions(
+    dialect: JsonSchemaDialect::Draft202012,
+    includeSchemaKeyword: true,
+    classReferenceStrategy: ClassReferenceStrategy::Definitions,
+));
+```
+
+The default dialect is Draft-7 and the root `$schema` keyword is omitted unless `includeSchemaKeyword` is enabled.
+If you prefer class-backed schemas to be expanded at the usage site, use `ClassReferenceStrategy::Inline`.
+
+To create a custom mapper implement [`JsonSchemaMapperInterface`](src/Mapper/JsonSchemaMapperInterface.php).
 
 ## Schema Semantics
 
