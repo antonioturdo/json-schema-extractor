@@ -132,6 +132,69 @@ This support is metadata-driven: `jsonSerialize()` is not executed and its metho
 
 When usable `jsonSerialize()` return metadata is available, it is treated as the root serialized payload and the normal property projection is skipped. If no usable return metadata is available, the strategy throws a `LogicException` because it cannot infer the actual `JsonSerializable` payload without executing the method. Bare `array`, `iterable`, `object`, and `mixed` return types are intentionally treated as too vague.
 
+### Custom serialization behavior
+
+Custom Symfony normalizers, `AbstractNormalizer::CALLBACKS`, and similar serializer customizations can contain arbitrary application logic, so `SymfonySerializerStrategy` does not try to inspect or execute them.
+When application-specific serialization changes the payload shape, create your own `SerializationStrategyInterface` implementation and delegate to `SymfonySerializerStrategy` for the standard Symfony behavior.
+
+For example, an application can serialize a `Money` value object as a string and serialize an `owner` object property as its identifier:
+
+```php
+use Zeusi\JsonSchemaExtractor\Context\ExtractionContext;
+use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
+use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
+use Zeusi\JsonSchemaExtractor\Serialization\SerializationStrategyInterface;
+use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
+
+final class AppSerializerStrategy implements SerializationStrategyInterface
+{
+    public function __construct(
+        private SymfonySerializerStrategy $inner,
+    ) {}
+
+    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedPayloadDefinition
+    {
+        $payload = $this->inner->project($definition, $context);
+        if (!$payload->type instanceof SerializedObjectType) {
+            return $payload;
+        }
+
+        $properties = [];
+        foreach ($payload->type->shape->properties as $name => $property) {
+            $type = $property->type;
+            if ($type instanceof ClassLikeType && $type->name === Money::class) {
+                $type = new BuiltinType('string');
+            }
+            if ($name === 'owner') {
+                $type = new BuiltinType('string');
+            }
+
+            $properties[$name] = new SerializedPropertyDefinition(
+                name: $property->name,
+                required: $property->required,
+                type: $type,
+            );
+        }
+
+        return new SerializedPayloadDefinition(new SerializedObjectType(new SerializedObjectDefinition(
+            name: $payload->type->shape->name,
+            properties: $properties,
+            title: $payload->type->shape->title,
+            description: $payload->type->shape->description,
+            additionalProperties: $payload->type->shape->additionalProperties,
+            concreteClasses: $payload->type->shape->concreteClasses,
+        )));
+    }
+}
+```
+
+This keeps custom behavior explicit while still reusing Symfony metadata support for groups, serialized names, discriminators, and built-in normalizer mappings. For nested values, repeat the same idea recursively or create a small project-specific helper.
+
 ## What it reads
 
 - Symfony serializer class/property metadata.
@@ -167,8 +230,7 @@ When usable `jsonSerialize()` return metadata is available, it is treated as the
 
 ## Limitations
 
-- Runtime-dependent serializer customizations outside known mappings are not handled, for example:
-  - custom normalizers
+- Runtime-dependent serializer customizations outside known mappings are not handled automatically.
 
 ## Example
 
