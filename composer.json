@@ -29,12 +29,14 @@
         "symfony/validator": "^6.4 || ^7.0 || ^8.0",
         "symfony/uid": "^6.4 || ^7.0 || ^8.0",
         "symfony/translation-contracts": "^3.5",
-        "opis/json-schema": "^2.6"
+        "opis/json-schema": "^2.6",
+        "symfony/form": "^6.4 || ^7.0 || ^8.0"
     },
     "suggest": {
         "phpdocumentor/reflection-docblock": "Allows extracting DocBlock text metadata and PHPDoc types using PhpDocumentorEnricher",
         "phpstan/phpdoc-parser": "Allows extracting high-precision PHPDoc types using PhpStanEnricher",
         "symfony/error-handler": "Allows SymfonySerializerStrategy to map FlattenException values like Symfony's ProblemNormalizer",
+        "symfony/form": "Allows SymfonySerializerStrategy to map FormInterface values like Symfony's FormErrorNormalizer",
         "symfony/serializer": "Allows using SymfonySerializerStrategy for #[SerializedName], serialization groups, name converters, and known normalizers",
         "symfony/translation-contracts": "Allows SymfonySerializerStrategy to map TranslatableInterface values like Symfony's TranslatableNormalizer",
         "symfony/uid": "Allows SymfonySerializerStrategy to map Symfony Uid values like Symfony's UidNormalizer",

@@ -10,6 +10,7 @@ Some known-normalizer mappings also depend on the Symfony package that defines t
 
 - `symfony/uid` for Symfony UID values.
 - `symfony/validator` for `ConstraintViolationListInterface`.
+- `symfony/form` for `FormInterface`.
 - `symfony/error-handler` for `FlattenException`.
 - `symfony/translation-contracts` for `TranslatableInterface`.
 
@@ -155,10 +156,12 @@ When usable `jsonSerialize()` return metadata is available, it is treated as the
 | `DateTimeZone` normalization | `type: string` | Matches `DateTimeZoneNormalizer` behavior. |
 | `DateInterval` normalization | `type: string`, often `format: duration` | Custom formats may remain plain string. |
 | Symfony UID normalization | `type: string`, `format: uuid` where applicable | Base32/Base58 remain plain string. |
+| `BcMath\Number` / `GMP` normalization | `type: string` | Matches Symfony's `NumberNormalizer` behavior. |
 | `TranslatableInterface` normalization | `type: string` | Locale changes value, not shape. |
 | Data URI file normalization | `type: string`, pattern `^data:` | Matches `DataUriNormalizer`. |
 | `JsonSerializable` normalization | payload declared by `jsonSerialize()` return metadata | Supports precise object, scalar, list, and dictionary payloads. |
 | `ConstraintViolationListInterface` normalization | RFC 7807-like object shape | Requires relevant Symfony components installed. |
+| `FormInterface` normalization | form error object shape with `title`, `type`, `code`, `errors`, and optional `children` | Matches `FormErrorNormalizer` for invalid submitted forms. |
 | `FlattenException` normalization | RFC 7807-like problem object shape | Requires relevant Symfony components installed. |
 | Class discriminator mapping | discriminator field + `oneOf` concrete classes | Base/interface schemas resolve through configured map. |
 

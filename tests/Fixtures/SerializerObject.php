@@ -3,6 +3,7 @@
 namespace Zeusi\JsonSchemaExtractor\Tests\Fixtures;
 
 use Symfony\Component\ErrorHandler\Exception\FlattenException;
+use Symfony\Component\Form\FormInterface;
 use Symfony\Component\Serializer\Attribute\Context;
 use Symfony\Component\Serializer\Attribute\Groups;
 use Symfony\Component\Serializer\Attribute\SerializedName;
@@ -42,6 +43,7 @@ class SerializerObject
         public TranslatableInterface $message,
         public \SplFileInfo $file,
         public ConstraintViolationListInterface $violations,
+        public FormInterface $form,
         public FlattenException $problem,
     ) {}
 }
