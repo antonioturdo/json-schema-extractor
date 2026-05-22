@@ -231,6 +231,12 @@ This keeps custom behavior explicit while still reusing Symfony metadata support
 ## Limitations
 
 - Runtime-dependent serializer customizations outside known mappings are not handled automatically.
+- Runtime state-dependent options are not modeled automatically:
+  - `AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS` can preserve empty object-like values as JSON objects, but it does not prove that the same property cannot serialize as an array or dictionary when populated.
+  - `AbstractObjectNormalizer::SKIP_UNINITIALIZED_VALUES` can omit uninitialized properties, but the strategy does not inspect constructor/body assignments or object instance state.
+- Depth and circular-reference handlers are not modeled automatically:
+  - `#[MaxDepth]` / `AbstractObjectNormalizer::ENABLE_MAX_DEPTH` affect traversal depth during runtime serialization; the strategy does not currently alter nested schema expansion based on serializer depth metadata.
+  - `AbstractObjectNormalizer::MAX_DEPTH_HANDLER` and `AbstractNormalizer::CIRCULAR_REFERENCE_HANDLER` can replace nested objects with arbitrary application-specific values; model these cases with a custom serialization strategy when needed.
 
 ## Example
 
