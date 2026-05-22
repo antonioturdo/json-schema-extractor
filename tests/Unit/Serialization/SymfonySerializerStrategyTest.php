@@ -33,9 +33,12 @@ use Zeusi\JsonSchemaExtractor\Model\Type\Types;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonSerializableProjection;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CustomNormalizedObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorCat;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SerializerObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SymfonySerializer\CustomSerializationStrategy;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SymfonySerializer\NumberNormalizerStub;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
 
 #[CoversClass(SymfonySerializerStrategy::class)]
@@ -137,6 +140,18 @@ class SymfonySerializerStrategyTest extends TestCase
         $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext()));
 
         $this->assertPlainStringField($this->requireSerializedProperty($projectedDefinition, 'amount'));
+    }
+
+    public function testProjectCanBeDecoratedForRuntimeSerializerCustomizations(): void
+    {
+        $definition = $this->discoverer->discover(CustomNormalizedObject::class);
+        $strategy = new CustomSerializationStrategy($this->strategy);
+
+        $projectedDefinition = $this->requireRootObject($strategy->project($definition, new ExtractionContext()));
+
+        $this->assertPlainStringField($this->requireSerializedProperty($projectedDefinition, 'amount'));
+        $this->assertPlainStringField($this->requireSerializedProperty($projectedDefinition, 'owner'));
+        $this->assertPlainStringField($this->requireSerializedProperty($projectedDefinition, 'label'));
     }
 
     public function testProjectUsesSymfonySerializerContextForKnownNormalizerFormats(): void
@@ -340,5 +355,3 @@ class SymfonySerializerStrategyTest extends TestCase
         return $type->shape;
     }
 }
-
-final class NumberNormalizerStub {}
