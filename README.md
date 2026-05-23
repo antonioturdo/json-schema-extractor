@@ -136,6 +136,14 @@ choose components according to the metadata you trust and the serializer you act
 
 Custom behavior can be added by implementing a discoverer, enricher, serialization strategy, or mapper.
 
+## Symfony Bundle
+
+The Symfony bundle registers the built-in components as services.
+It reduces the boilerplate needed to define extractor pipelines, especially when using Symfony Serializer and Symfony Validator services.
+Each extractor must explicitly choose the serialization strategy that matches the JSON produced by the application.
+
+See [`docs/symfony-bundle.md`](docs/symfony-bundle.md) for bundle configuration and available Symfony integration details.
+
 ## Components
 
 ### Discoverer
