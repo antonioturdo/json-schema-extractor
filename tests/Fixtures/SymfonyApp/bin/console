@@ -1,0 +1,42 @@
+#!/usr/bin/env php
+<?php
+
+use Symfony\Component\Console\Application;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Zeusi\JsonSchemaExtractor\Bridge\Symfony\JsonSchemaExtractorBundle;
+
+require \dirname(__DIR__, 4) . '/vendor/autoload.php';
+
+$container = new ContainerBuilder();
+$container->setParameter('kernel.environment', 'test');
+$container->setParameter('kernel.build_dir', sys_get_temp_dir() . '/json-schema-extractor-mini-app');
+
+$bundle = new JsonSchemaExtractorBundle();
+$bundle->build($container);
+$extension = $bundle->getContainerExtension();
+if ($extension === null) {
+    throw new RuntimeException('JsonSchemaExtractorBundle extension is not available.');
+}
+
+$extension->load([[
+    'default_extractor' => 'app',
+    'extractors' => [
+        'app' => [
+            'serialization' => 'json_schema_extractor.serialization.json_encode',
+            'enrichers' => [
+                'json_schema_extractor.enricher.phpstan',
+            ],
+        ],
+    ],
+]], $container);
+
+$container->compile();
+
+$application = new Application('JSON Schema Extractor Mini App');
+$command = $container->get('json_schema_extractor.command.extract');
+if (method_exists($application, 'addCommand')) {
+    $application->addCommand($command);
+} else {
+    $application->add($command);
+}
+$application->run();

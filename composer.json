@@ -30,13 +30,21 @@
         "symfony/uid": "^6.4 || ^7.0 || ^8.0",
         "symfony/translation-contracts": "^3.5",
         "opis/json-schema": "^2.6",
-        "symfony/form": "^6.4 || ^7.0 || ^8.0"
+        "symfony/form": "^6.4 || ^7.0 || ^8.0",
+        "symfony/http-kernel": "^6.4 || ^7.0 || ^8.0",
+        "symfony/dependency-injection": "^6.4 || ^7.0 || ^8.0",
+        "symfony/config": "^6.4 || ^7.0 || ^8.0",
+        "symfony/console": "^6.4 || ^7.0 || ^8.0"
     },
     "suggest": {
         "phpdocumentor/reflection-docblock": "Allows extracting DocBlock text metadata and PHPDoc types using PhpDocumentorEnricher",
         "phpstan/phpdoc-parser": "Allows extracting high-precision PHPDoc types using PhpStanEnricher",
+        "symfony/console": "Allows using the optional Symfony console command to extract schemas",
+        "symfony/config": "Allows configuring the optional Symfony bundle",
+        "symfony/dependency-injection": "Allows wiring JSON Schema Extractor components as Symfony services",
         "symfony/error-handler": "Allows SymfonySerializerStrategy to map FlattenException values like Symfony's ProblemNormalizer",
         "symfony/form": "Allows SymfonySerializerStrategy to map FormInterface values like Symfony's FormErrorNormalizer",
+        "symfony/http-kernel": "Allows registering the optional Symfony bundle",
         "symfony/serializer": "Allows using SymfonySerializerStrategy for #[SerializedName], serialization groups, name converters, and known normalizers",
         "symfony/translation-contracts": "Allows SymfonySerializerStrategy to map TranslatableInterface values like Symfony's TranslatableNormalizer",
         "symfony/uid": "Allows SymfonySerializerStrategy to map Symfony Uid values like Symfony's UidNormalizer",
