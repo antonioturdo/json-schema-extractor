@@ -1,9 +1,11 @@
 # JSON Schema Extractor
 
-[![PHP](https://img.shields.io/badge/php-%3E%3D8.1-777bb4.svg)](https://www.php.net/)
 [![Packagist Version](https://img.shields.io/packagist/v/zeusi/json-schema-extractor.svg)](https://packagist.org/packages/zeusi/json-schema-extractor)
-[![PHPUnit](https://img.shields.io/badge/phpunit-10.5-366488.svg)](https://phpunit.de/)
+[![PHP](https://img.shields.io/badge/php-%3E%3D8.1-777bb4.svg)](https://www.php.net/)
+[![CI](https://github.com/antonioturdo/json-schema-extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/antonioturdo/json-schema-extractor/actions/workflows/ci.yml)
 [![PHPStan](https://img.shields.io/badge/phpstan-level%208-brightgreen.svg)](https://phpstan.org/)
+[![Coverage](https://codecov.io/gh/antonioturdo/json-schema-extractor/graph/badge.svg)](https://codecov.io/gh/antonioturdo/json-schema-extractor)
+[![License](https://img.shields.io/packagist/l/zeusi/json-schema-extractor.svg)](LICENSE)
 
 > JSON Schema Extractor generates JSON Schema documents from PHP DTOs by extracting native types, PHPDoc, validation constraints, and serialization metadata through a modular pipeline.
 
