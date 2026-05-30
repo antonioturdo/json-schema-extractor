@@ -86,6 +86,7 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
         }
 
         $groups = $this->resolveGroups($serializerContext->context);
+        $ignoredAttributes = $this->resolveIgnoredAttributes($serializerContext->context);
         $concreteClasses = [];
 
         $discriminator = null;
@@ -106,6 +107,10 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
 
         $properties = [];
         foreach ($definition->getProperties() as $propertyName => $propertyDefinition) {
+            if (\in_array($propertyName, $ignoredAttributes, true)) {
+                continue;
+            }
+
             $newName = null;
             $isDiscriminatorProperty = $discriminator !== null && $propertyName === $discriminator['propertyName'];
             if ($isDiscriminatorProperty) {
@@ -294,6 +299,23 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
         }
 
         return null;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     * @return list<string>
+     */
+    private function resolveIgnoredAttributes(array $context): array
+    {
+        $ignoredAttributes = $context[AbstractNormalizer::IGNORED_ATTRIBUTES] ?? [];
+        if (!\is_array($ignoredAttributes)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $ignoredAttributes,
+            static fn(mixed $attribute): bool => \is_string($attribute) && $attribute !== ''
+        ));
     }
 
     /**
