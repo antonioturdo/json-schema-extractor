@@ -7,6 +7,7 @@ use PHPUnit\Framework\TestCase;
 use Symfony\Component\Serializer\Encoder\JsonEncode;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
+use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
 use Symfony\Component\Serializer\Normalizer\UidNormalizer;
 use Zeusi\JsonSchemaExtractor\Context\ExtractionContext;
@@ -78,6 +79,20 @@ class SymfonySerializerStrategyTest extends TestCase
 
         self::assertArrayHasKey('id', $definition->properties);
         self::assertArrayNotHasKey('name', $definition->properties);
+        self::assertArrayNotHasKey('union', $definition->properties);
+    }
+
+    public function testProjectIgnoresAttributesFromContext(): void
+    {
+        $definition = $this->discoverer->discover(SerializerObject::class);
+        $context = (new ExtractionContext())->with(new SymfonySerializerContext(context: [
+            AbstractNormalizer::IGNORED_ATTRIBUTES => ['name', 'union'],
+        ]));
+
+        $definition = $this->requireRootObject($this->strategy->project($definition, $context));
+
+        self::assertArrayHasKey('id', $definition->properties);
+        self::assertArrayNotHasKey('renamed_field', $definition->properties);
         self::assertArrayNotHasKey('union', $definition->properties);
     }
 

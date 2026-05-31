@@ -69,6 +69,21 @@ Symfony property metadata can define normalization contexts per group. The strat
 
 This matters for known normalizers whose output schema depends on context, such as date/time and UID normalizers.
 
+### Ignored attributes
+
+`AbstractNormalizer::IGNORED_ATTRIBUTES` excludes properties at runtime by their original PHP attribute names:
+
+```php
+use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
+use Zeusi\JsonSchemaExtractor\Context\SymfonySerializerContext;
+
+new SymfonySerializerContext([
+    AbstractNormalizer::IGNORED_ATTRIBUTES => ['internalNotes'],
+]);
+```
+
+The strategy applies the same exclusion before serialized names and name converters are applied.
+
 ### Skipping null values
 
 `AbstractObjectNormalizer::SKIP_NULL_VALUES` affects requiredness for nullable properties:
@@ -198,14 +213,14 @@ This keeps custom behavior explicit while still reusing Symfony metadata support
 ## What it reads
 
 - Symfony serializer class/property metadata.
-- Optional `SymfonySerializerContext` (e.g. groups, skip-null policy).
+- Optional `SymfonySerializerContext` (e.g. groups, ignored attributes, skip-null policy).
 - `JsonSerializable::jsonSerialize()` return metadata when available.
 - Known normalizer/discriminator behaviors.
 
 ## Projection behavior
 
 - Map property names, taking into account the `SerializedName` attribute and name converters.
-- Excludes properties based on the `Ignore` attribute and serialization groups.
+- Excludes properties based on ignored attributes, the `Ignore` attribute, and serialization groups.
 - Rewrites types for known normalized values (date/time, UID, etc.).
 - Takes into account discriminator class mapping.
 
@@ -215,6 +230,7 @@ This keeps custom behavior explicit while still reusing Symfony metadata support
 | :--- | :--- | :--- |
 | `SerializedName` | property key renamed in schema | Uses serialized name as output field name. |
 | Serialization groups | fields included/excluded | Based on provided serializer context groups. |
+| `AbstractNormalizer::IGNORED_ATTRIBUTES` | fields excluded | Uses original PHP attribute names from the serializer context. |
 | `DateTimeInterface` normalization | `type: string`, `format: date-time` (or `date` for known formats) | Replaces default `json_encode()` object shape. |
 | `DateTimeZone` normalization | `type: string` | Matches `DateTimeZoneNormalizer` behavior. |
 | `DateInterval` normalization | `type: string`, often `format: duration` | Custom formats may remain plain string. |
@@ -231,6 +247,7 @@ This keeps custom behavior explicit while still reusing Symfony metadata support
 ## Limitations
 
 - Runtime-dependent serializer customizations outside known mappings are not handled automatically.
+- `AbstractNormalizer::ATTRIBUTES` is not modeled automatically.
 - Runtime state-dependent options are not modeled automatically:
   - `AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS` can preserve empty object-like values as JSON objects, but it does not prove that the same property cannot serialize as an array or dictionary when populated.
   - `AbstractObjectNormalizer::SKIP_UNINITIALIZED_VALUES` can omit uninitialized properties, but the strategy does not inspect constructor/body assignments or object instance state.
