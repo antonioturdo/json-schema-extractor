@@ -24,10 +24,17 @@ use Zeusi\JsonSchemaExtractor\Model\Type\TypeAnnotations;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeConstraints;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
+use Zeusi\JsonSchemaExtractor\Serialization\State\NeutralProjectionState;
+use Zeusi\JsonSchemaExtractor\Serialization\State\ProjectionState;
 
 final class JsonEncodeSerializationStrategy implements SerializationStrategyInterface
 {
-    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedPayloadDefinition
+    public function initialState(ExtractionContext $context): ProjectionState
+    {
+        return NeutralProjectionState::instance();
+    }
+
+    public function project(ClassDefinition $definition, ExtractionContext $context, ProjectionState $state): SerializedPayloadDefinition
     {
         $jsonEncodeContext = $context->find(JsonEncodeContext::class);
         $jsonSerializableDefinition = JsonSerializableProjection::project(

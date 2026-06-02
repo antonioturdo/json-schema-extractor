@@ -34,12 +34,16 @@ use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\IntersectionType;
 use Zeusi\JsonSchemaExtractor\Model\Type\MapType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedViewReferenceType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeAnnotations;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeConstraints;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeUtils;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
+use Zeusi\JsonSchemaExtractor\Serialization\State\NeutralProjectionState;
+use Zeusi\JsonSchemaExtractor\Serialization\State\ProjectionState;
+use Zeusi\JsonSchemaExtractor\Serialization\State\SymfonyProjectionState;
 
 /**
  * Projects the ClassDefinition using Symfony Serializer component.
@@ -54,7 +58,21 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
         private readonly ?NameConverterInterface $nameConverter = null
     ) {}
 
-    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedPayloadDefinition
+    public function initialState(ExtractionContext $context): ProjectionState
+    {
+        $serializerContext = $context->find(SymfonySerializerContext::class) ?? new SymfonySerializerContext();
+        $attributes = $serializerContext->context[AbstractNormalizer::ATTRIBUTES] ?? null;
+
+        // ATTRIBUTES present as an array filters to that list (an empty array allows nothing);
+        // only an absent or non-array value means "no filter".
+        if (\is_array($attributes)) {
+            return new SymfonyProjectionState($attributes);
+        }
+
+        return NeutralProjectionState::instance();
+    }
+
+    public function project(ClassDefinition $definition, ExtractionContext $context, ProjectionState $state): SerializedPayloadDefinition
     {
         $className = $definition->getClassName();
 
@@ -87,6 +105,7 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
 
         $groups = $this->resolveGroups($serializerContext->context);
         $ignoredAttributes = $this->resolveIgnoredAttributes($serializerContext->context);
+        $attributesState = $state instanceof SymfonyProjectionState ? $state : null;
         $concreteClasses = [];
 
         $discriminator = null;
@@ -117,6 +136,21 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
                 $discriminatorPropertySeen = true;
             }
 
+            // AbstractNormalizer::ATTRIBUTES both filters which properties are serialized and
+            // narrows the nested view of class-backed ones. The discriminator is always kept.
+            // null = no narrowing on this edge (leaf or no filter); an array = narrow to that
+            // slice, even when empty.
+            $childAttributesView = null;
+            if ($attributesState !== null && !$isDiscriminatorProperty) {
+                $attributesView = $attributesState->attributesView();
+
+                if (isset($attributesView[$propertyName]) && \is_array($attributesView[$propertyName])) {
+                    $childAttributesView = $attributesView[$propertyName];
+                } elseif (!\in_array($propertyName, $attributesView, true)) {
+                    continue;
+                }
+            }
+
             $attributeMetadata = $attributesMetadata[$propertyName] ?? null;
             $propertyContext = $this->resolvePropertyContext($serializerContext->context, $attributeMetadata, $groups);
 
@@ -137,7 +171,8 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
                 continue;
             }
 
-            $projectedType = $this->projectType($propertyDefinition->getType(), $propertyContext);
+            $childState = $childAttributesView === null ? null : new SymfonyProjectionState($childAttributesView);
+            $projectedType = $this->projectType($propertyDefinition->getType(), $propertyContext, $childState);
 
             if ($newName === null && $this->nameConverter !== null && !$isDiscriminatorProperty) {
                 if (interface_exists(AdvancedNameConverterInterface::class) && $this->nameConverter instanceof AdvancedNameConverterInterface) {
@@ -172,13 +207,17 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
             $properties[$projectedProperty->name] = $projectedProperty;
         }
 
-        return new SerializedPayloadDefinition(new SerializedObjectType(new SerializedObjectDefinition(
-            name: $definition->getClassName(),
-            properties: $properties,
-            title: $definition->getTitle(),
-            description: $definition->getDescription(),
-            concreteClasses: $concreteClasses
-        )));
+        return new SerializedPayloadDefinition(
+            new SerializedObjectType(new SerializedObjectDefinition(
+                name: $definition->getClassName(),
+                properties: $properties,
+                title: $definition->getTitle(),
+                description: $definition->getDescription(),
+                concreteClasses: $concreteClasses
+            )),
+            // An ATTRIBUTES-narrowed view is a bespoke, one-off shape → inline-only.
+            inlineOnly: $attributesState !== null,
+        );
     }
 
     private function createDiscriminatorProperty(string $propertyName, string $mappedType): SerializedPropertyDefinition
@@ -642,10 +681,10 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
     /**
      * @param array<string, mixed> $context
      */
-    private function projectType(?Type $type, array $context): ?Type
+    private function projectType(?Type $type, array $context, ?ProjectionState $childState = null): ?Type
     {
         return TypeUtils::rewrite(
-            $this->copyType($type, $context),
+            $this->copyType($type, $context, $childState),
             fn(Type $type): ?Type => $this->rewriteKnownNormalizerExpr($type, $context)
         );
     }
@@ -653,27 +692,29 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
     /**
      * @param array<string, mixed> $context
      */
-    private function copyType(?Type $type, array $context = []): ?Type
+    private function copyType(?Type $type, array $context = [], ?ProjectionState $childState = null): ?Type
     {
         return match (true) {
             $type === null => null,
             $type instanceof BuiltinType => new BuiltinType($type->name),
-            $type instanceof ClassLikeType => new ClassLikeType($type->name),
+            $type instanceof ClassLikeType => $childState !== null
+                ? new SerializedViewReferenceType($type->name, $childState)
+                : new ClassLikeType($type->name),
             $type instanceof EnumType => new EnumType($type->className),
-            $type instanceof ArrayType => new ArrayType($this->copyType($type->type, $context) ?? new UnknownType()),
-            $type instanceof MapType => new MapType($this->copyType($type->type, $context) ?? new UnknownType()),
+            $type instanceof ArrayType => new ArrayType($this->copyType($type->type, $context, $childState) ?? new UnknownType()),
+            $type instanceof MapType => new MapType($this->copyType($type->type, $context, $childState) ?? new UnknownType()),
             $type instanceof InlineObjectType => new SerializedObjectType($this->copyInlineObjectDefinition($type->shape, $context)),
             $type instanceof DecoratedType => new DecoratedType(
-                $this->copyType($type->type, $context) ?? new UnknownType(),
+                $this->copyType($type->type, $context, $childState) ?? new UnknownType(),
                 $this->copyTypeConstraints($type->constraints),
                 $this->copyTypeAnnotations($type->annotations, $context)
             ),
             $type instanceof UnionType => new UnionType(
-                array_map(fn(Type $type): Type => $this->copyType($type, $context) ?? new UnknownType(), $type->types),
+                array_map(fn(Type $type): Type => $this->copyType($type, $context, $childState) ?? new UnknownType(), $type->types),
                 $type->semantics
             ),
             $type instanceof IntersectionType => new IntersectionType(
-                array_map(fn(Type $type): Type => $this->copyType($type, $context) ?? new UnknownType(), $type->types)
+                array_map(fn(Type $type): Type => $this->copyType($type, $context, $childState) ?? new UnknownType(), $type->types)
             ),
             $type instanceof UnknownType => new UnknownType(),
             default => throw new \LogicException(\sprintf('Unsupported Type "%s".', $type::class)),

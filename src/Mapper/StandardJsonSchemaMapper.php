@@ -5,7 +5,8 @@ namespace Zeusi\JsonSchemaExtractor\Mapper;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\SchemaType;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
-use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedProjection;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\ViewId;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
@@ -15,7 +16,7 @@ use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\IntersectionType;
 use Zeusi\JsonSchemaExtractor\Model\Type\MapType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
-use Zeusi\JsonSchemaExtractor\Model\Type\SerializedReferenceType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedViewReferenceType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeAnnotations;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeConstraints;
@@ -30,57 +31,79 @@ use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
  */
 class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
 {
-    /** @var callable(string): SerializedPayloadDefinition */
-    private $payloadProvider;
+    /** The projection being mapped; set at the start of each map() call. */
+    private SerializedProjection $projection;
 
-    /** @var array<string, JsonSchema> */
+    /**
+     * Reusable definitions collected during the pass, indexed by definition name.
+     * @var array<string, JsonSchema>
+     */
     private array $definitions = [];
 
-    /** @var array<string, string> */
+    /**
+     * Cache of class name => definition name, to keep names stable and resolve collisions.
+     * @var array<string, string>
+     */
     private array $definitionNamesByClass = [];
 
-    /** @var array<string, true> */
+    /**
+     * Definitions currently being built, used to break cycles in Definitions mode.
+     * @var array<string, true> Keyed by ViewId::key()
+     */
     private array $buildingDefinitions = [];
 
-    private int $mapDepth = 0;
+    /**
+     * Views currently being inlined on the active branch, used to break cycles in inline expansion.
+     * @var array<string, true> Keyed by ViewId::key()
+     */
+    private array $inliningViews = [];
 
+    /** Class name of the root view; lets a self-reference emit "#". Null when the root is not an object. */
     private ?string $rootClassName = null;
+
+    /** View key of the root view; paired with $rootClassName for the self-reference check. */
+    private string $rootViewKey = '';
 
     public function __construct(
         private readonly StandardJsonSchemaMapperOptions $options = new StandardJsonSchemaMapperOptions()
     ) {}
 
-    public function map(SerializedPayloadDefinition $definition, callable $payloadProvider): JsonSchema
+    /**
+     * Folds a resolved projection into a JSON Schema document: maps the root view, then attaches
+     * the collected reusable definitions and the dialect keyword.
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
+    public function map(SerializedProjection $projection): JsonSchema
     {
-        $isRootMap = $this->mapDepth === 0;
-        if ($isRootMap) {
-            $this->resetDefinitionsState($this->extractRootObjectDefinition($definition->type)?->name);
+        $this->projection = $projection;
+        $rootPayload = $projection->rootPayload();
+
+        // Initialize the working state for this mapping pass.
+        $this->definitions = [];
+        $this->definitionNamesByClass = [];
+        $this->buildingDefinitions = [];
+        $this->rootClassName = $this->extractRootObjectDefinition($rootPayload->type)?->name;
+        $this->rootViewKey = $projection->root()->viewKey;
+        $this->inliningViews = $this->rootClassName !== null
+            ? [(new ViewId($this->rootClassName, $this->rootViewKey))->key() => true]
+            : [];
+
+        $schema = $this->mapType($rootPayload->type);
+
+        if ($this->options->includeSchemaKeyword) {
+            $schema->setSchema($this->options->dialect->schemaUri());
         }
 
-        $this->payloadProvider = $payloadProvider;
-
-        ++$this->mapDepth;
-        try {
-            $schema = $this->mapType($definition->type);
-        } finally {
-            --$this->mapDepth;
-        }
-
-        if ($isRootMap) {
-            if ($this->options->includeSchemaKeyword) {
-                $schema->setSchema($this->options->dialect->schemaUri());
-            }
-
-            if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions && $this->definitions !== []) {
-                $this->applyDefinitions($schema);
-            }
-
-            $this->rootClassName = null;
-        }
+        // Emits the definitions block when any were collected — including a definition
+        // promoted to break a non-root cycle in inline mode (no-op when there are none).
+        $this->applyDefinitions($schema);
 
         return $schema;
     }
 
+    /** Finds the object shape at the root of a payload type (unwrapping decoration); null if the root is not an object. */
     private function extractRootObjectDefinition(Type $type): ?SerializedObjectDefinition
     {
         if ($type instanceof SerializedObjectType) {
@@ -95,23 +118,35 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
     }
 
     /**
+     * Maps discriminator subtypes to a `oneOf` of their canonical views.
+     *
      * @param list<class-string> $concreteClasses
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
      */
     private function mapConcreteClasses(array $concreteClasses): JsonSchema
     {
         $schemas = [];
         foreach ($concreteClasses as $className) {
+            // Discriminator subtypes are always referenced in their canonical view.
             if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
                 $this->registerDefinition($className);
                 $schemas[] = (new JsonSchema())->setRef($this->definitionRef($className));
             } else {
-                $schemas[] = $this->provideNestedSchema($className);
+                $schemas[] = $this->provideNestedSchema(new ViewId($className));
             }
         }
 
         return (new JsonSchema())->setOneOf($schemas);
     }
 
+    /**
+     * Maps an object shape to an `object` schema with its title, description, additionalProperties, and properties.
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
     private function mapObjectShape(SerializedObjectDefinition $definition): JsonSchema
     {
         $schema = (new JsonSchema())
@@ -147,6 +182,12 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         return $schema;
     }
 
+    /**
+     * Maps any serialized type to its JSON Schema, recursing into nested types. Central dispatch of the fold.
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
     private function mapType(Type $type): JsonSchema
     {
         if ($type instanceof DecoratedType) {
@@ -191,8 +232,8 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
             return $this->mapObjectShape($type->shape);
         }
 
-        if ($type instanceof SerializedReferenceType) {
-            return (new JsonSchema())->setRef($this->recursionRef($type->className));
+        if ($type instanceof SerializedViewReferenceType) {
+            return $this->mapClassReference($type->className, $type->childState->viewKey());
         }
 
         if ($type instanceof BuiltinType) {
@@ -214,6 +255,11 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         return new JsonSchema();
     }
 
+    /**
+     * Maps a builtin type to its JSON Schema (`mixed` => empty schema; array/iterable and object get sensible defaults).
+     *
+     * @throws \LogicException
+     */
     private function mapBuiltinType(BuiltinType $type): JsonSchema
     {
         // mixed value => empty schema
@@ -245,29 +291,94 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         return $schema;
     }
 
+    /**
+     * Maps a bare class type, i.e. the canonical (un-narrowed) view of that class.
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
     private function mapClassLikeType(ClassLikeType $type): JsonSchema
     {
-        $className = $type->name;
+        return $this->mapClassReference($type->name, '');
+    }
 
+    /**
+     * Maps a reference to a class-backed view: a referenceable view (set by the strategy) follows the
+     * configured reference strategy, while an inline-only view (e.g. an ATTRIBUTES projection) is
+     * expanded in place like an anonymous shape.
+     *
+     * @param class-string $className
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
+    private function mapClassReference(string $className, string $viewKey): JsonSchema
+    {
         if (interface_exists($className)) {
-            throw new \RuntimeException(\sprintf('Cannot generate JSON Schema for interface "%s" automatically: 
-                    interfaces do not define properties or a concrete shape. Provide a concrete DTO class, 
-                    or add an enricher that maps this interface to one or more concrete implementations (oneOf), 
+            throw new \RuntimeException(\sprintf('Cannot generate JSON Schema for interface "%s" automatically:
+                    interfaces do not define properties or a concrete shape. Provide a concrete DTO class,
+                    or add an enricher that maps this interface to one or more concrete implementations (oneOf),
                     or to an untyped object (additionalProperties: true).', $className));
         }
 
-        if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
-            if ($className === $this->rootClassName) {
-                return (new JsonSchema())->setRef('#');
-            }
+        $viewId = new ViewId($className, $viewKey);
 
-            $this->registerDefinition($className);
-            return (new JsonSchema())->setRef($this->definitionRef($className));
+        if (!$this->projection->get($viewId)->inlineOnly
+            && $this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions
+        ) {
+            return $this->referenceTo($className, $viewKey);
         }
 
-        return $this->provideNestedSchema($className);
+        return $this->inlineView($viewId, $className, $viewKey);
     }
 
+    /**
+     * Emits a reference to a view: the document root ("#") when it is the root view, otherwise a
+     * shared definition (registered on demand).
+     *
+     * @param class-string $className
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
+    private function referenceTo(string $className, string $viewKey): JsonSchema
+    {
+        if ($className === $this->rootClassName && $viewKey === $this->rootViewKey) {
+            return (new JsonSchema())->setRef('#');
+        }
+
+        $this->registerDefinition($className);
+        return (new JsonSchema())->setRef($this->definitionRef($className));
+    }
+
+    /**
+     * Expands a view in place. A cycle cannot be inlined, so when the view is already being inlined
+     * on the current branch it is broken with a reference instead.
+     *
+     * @param class-string $className
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
+    private function inlineView(ViewId $viewId, string $className, string $viewKey): JsonSchema
+    {
+        if (isset($this->inliningViews[$viewId->key()])) {
+            return $this->referenceTo($className, $viewKey);
+        }
+
+        $this->inliningViews[$viewId->key()] = true;
+        try {
+            return $this->provideNestedSchema($viewId);
+        } finally {
+            unset($this->inliningViews[$viewId->key()]);
+        }
+    }
+
+    /**
+     * Maps an enum, either inline or as a referenced definition, per the configured strategy.
+     *
+     * @throws \ReflectionException
+     */
     private function mapEnumType(EnumType $type): JsonSchema
     {
         if ($this->options->classReferenceStrategy === ClassReferenceStrategy::Definitions) {
@@ -278,8 +389,13 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         return $this->buildEnumSchema($type->className);
     }
 
+    /** Attaches the collected definitions to the root schema under the dialect's keyword; no-op when there are none. */
     private function applyDefinitions(JsonSchema $schema): void
     {
+        if ($this->definitions === []) {
+            return;
+        }
+
         match ($this->options->dialect) {
             JsonSchemaDialect::Draft7 => $schema->setDefinitions($this->definitions),
             JsonSchemaDialect::Draft202012 => $schema->setDefs($this->definitions),
@@ -287,16 +403,23 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
     }
 
     /**
-     * @param class-string $className
+     * Looks up a view's payload in the projection and maps it.
+     *
+     * @throws \ReflectionException
+     * @throws \LogicException
      */
-    private function provideNestedSchema(string $className): JsonSchema
+    private function provideNestedSchema(ViewId $viewId): JsonSchema
     {
-        $payload = ($this->payloadProvider)($className);
+        $payload = $this->projection->get($viewId);
         return $this->mapType($payload->type);
     }
 
     /**
+     * Builds an inline enum schema from the enum's cases (backing values, or names for pure enums).
+     *
      * @param class-string<\UnitEnum> $enumClass
+     *
+     * @throws \ReflectionException
      */
     private function buildEnumSchema(string $enumClass): JsonSchema
     {
@@ -312,7 +435,11 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
     }
 
     /**
+     * Registers an enum as a reusable definition (once per name).
+     *
      * @param class-string<\UnitEnum> $enumClass
+     *
+     * @throws \ReflectionException
      */
     private function registerEnumDefinition(string $enumClass): void
     {
@@ -324,16 +451,13 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         $this->definitions[$definitionName] = $this->buildEnumSchema($enumClass);
     }
 
-    private function resetDefinitionsState(?string $rootClassName): void
-    {
-        $this->definitions = [];
-        $this->definitionNamesByClass = [];
-        $this->buildingDefinitions = [];
-        $this->rootClassName = $rootClassName;
-    }
-
     /**
+     * Registers a class's canonical view as a reusable definition, guarding against re-entrant cycles.
+     *
      * @param class-string $className
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
      */
     private function registerDefinition(string $className): void
     {
@@ -343,20 +467,16 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         }
 
         $this->buildingDefinitions[$className] = true;
-        $this->definitions[$definitionName] = $this->provideNestedSchema($className);
+        $this->definitions[$definitionName] = $this->provideNestedSchema(new ViewId($className));
         unset($this->buildingDefinitions[$className]);
     }
 
     /**
+     * Builds the dialect-specific `$ref` pointer (`#/definitions/...` or `#/$defs/...`) to a class definition.
+     *
      * @param class-string $className
-     */
-    private function recursionRef(string $className): string
-    {
-        return '#/components/schemas/' . str_replace('\\', '.', $className);
-    }
-
-    /**
-     * @param class-string $className
+     *
+     * @throws \ReflectionException
      */
     private function definitionRef(string $className): string
     {
@@ -364,7 +484,11 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
     }
 
     /**
+     * Resolves the stable definition name for a class (short name, falling back to a dotted FQN on collision).
+     *
      * @param class-string $className
+     *
+     * @throws \ReflectionException
      */
     private function definitionName(string $className): string
     {
@@ -385,6 +509,12 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         return $definitionName;
     }
 
+    /**
+     * Maps a union: deduplicates branches, then collapses to a type array, or emits `oneOf`/`anyOf`.
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
     private function mapUnionType(UnionType $type): JsonSchema
     {
         $schemas = [];
@@ -416,6 +546,8 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
     }
 
     /**
+     * Infers union semantics: `oneOf` only when the branches are provably disjoint by JSON type, else `anyOf`.
+     *
      * @param array<JsonSchema> $schemas
      */
     private function inferUnionSemantics(array $schemas): UnionSemantics
@@ -439,6 +571,8 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
     }
 
     /**
+     * Extracts the declared JSON type(s) of a schema, or null if it is not a plain `type`-only schema.
+     *
      * @return list<string>|null
      */
     private function extractJsonTypes(JsonSchema $schema): ?array
@@ -468,6 +602,8 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
     }
 
     /**
+     * Tests whether any two branch type-sets overlap, treating `integer` as a subset of `number`.
+     *
      * @param list<list<string>> $branchTypeSets
      */
     private function jsonTypeSetsOverlap(array $branchTypeSets): bool
@@ -492,6 +628,12 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         return false;
     }
 
+    /**
+     * Maps an intersection to an `allOf` of its (deduplicated) branches.
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
     private function mapIntersectionType(IntersectionType $type): JsonSchema
     {
         $schemas = [];
@@ -514,6 +656,9 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
     }
 
     /**
+     * Collapses type-only branches into a single `type` array (dropping `integer` when `number` is present),
+     * or returns null when the branches cannot be reduced this way.
+     *
      * @param array<JsonSchema> $schemas
      * @return array<SchemaType>|null
      */
@@ -558,6 +703,7 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         return array_values($types);
     }
 
+    /** Applies validation constraints (enum, numeric bounds, length, pattern, item counts) to a schema. */
     private function applyTypeConstraints(JsonSchema $schema, TypeConstraints $constraints): void
     {
         if ($constraints->enum !== []) {
@@ -598,6 +744,7 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         }
     }
 
+    /** Applies metadata annotations (title, description, format, deprecated, examples, default) to a schema. */
     private function applyTypeAnnotations(JsonSchema $schema, TypeAnnotations $annotations): void
     {
         if ($annotations->title !== null) {
@@ -627,7 +774,7 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
 
     /**
      * Avoids emitting defaults that are known to be incompatible with the generated schema.
-     * TODO: Extend this guard to the other JSON Schema primitive types.
+     * @todo: Extend this guard to the other JSON Schema primitive types.
      */
     private function canApplyDefault(JsonSchema $schema, mixed $default): bool
     {

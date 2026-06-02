@@ -4,19 +4,26 @@ namespace Zeusi\JsonSchemaExtractor;
 
 use Zeusi\JsonSchemaExtractor\Attribute\AdditionalProperties;
 use Zeusi\JsonSchemaExtractor\Context\ExtractionContext;
-use Zeusi\JsonSchemaExtractor\Context\ProcessingStackContext;
 use Zeusi\JsonSchemaExtractor\Discoverer\DiscovererInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\EnricherInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\Runtime\EnrichmentRuntime;
 use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaMapperInterface;
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchemaInterface;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedProjection;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\ViewId;
+use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
+use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
+use Zeusi\JsonSchemaExtractor\Model\Type\IntersectionType;
+use Zeusi\JsonSchemaExtractor\Model\Type\MapType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
-use Zeusi\JsonSchemaExtractor\Model\Type\SerializedReferenceType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedViewReferenceType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
+use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Serialization\SerializationStrategyInterface;
+use Zeusi\JsonSchemaExtractor\Serialization\State\NeutralProjectionState;
+use Zeusi\JsonSchemaExtractor\Serialization\State\ProjectionState;
 
 /**
  * Entry point for extracting JSON Schema documents from PHP classes.
@@ -53,51 +60,108 @@ class SchemaExtractor
     {
         $context ??= new ExtractionContext();
 
-        $schema = $this->extractSubSchema($className, $context, new ProcessingStackContext());
+        // Project every reachable class once into a resolved set of views...
+        $rootState = $this->serializationStrategy->initialState($context);
+        $views = [];
+        $this->resolve($className, $context, $rootState, $views, []);
+
+        // ...then map the finished projection to JSON Schema.
+        $projection = new SerializedProjection(new ViewId($className, $rootState->viewKey()), $views);
+        $schema = $this->mapper->map($projection);
         return $schema->jsonSerialize();
     }
 
     /**
-     * Extracts a JSON Schema object while tracking the recursion stack to avoid infinite loops.
+     * Recursively projects $className and every class it references into $views.
+     *
+     * Owns recursion, the cycle stack, and deduplication: a class already resolved
+     * or currently on the stack is not projected again, which breaks reference cycles.
      *
      * @param class-string $className
+     * @param array<string, SerializedPayloadDefinition> $views
+     * @param list<string> $stack View keys currently on the resolution path
      *
      * @throws \LogicException
      * @throws \ReflectionException
      */
-    private function extractSubSchema(string $className, ExtractionContext $context, ProcessingStackContext $stack): JsonSchemaInterface
+    private function resolve(string $className, ExtractionContext $context, ProjectionState $state, array &$views, array $stack): void
     {
-        if ($stack->has($className)) {
-            $serializedDefinition = $this->createRecursionReferencePayload($className);
-        } else {
-            $stack = $stack->pushed($className);
-            $serializedDefinition = $this->projectClass($className, $context);
+        $key = (new ViewId($className, $state->viewKey()))->key();
+        if (isset($views[$key]) || \in_array($key, $stack, true)) {
+            return;
         }
 
-        // 4. Map (passing an anonymous function to allow the Mapper to request projected nested payloads)
-        return $this->mapper->map(
-            $serializedDefinition,
-            function (string $class) use ($context, $stack): SerializedPayloadDefinition {
-                /** @var class-string $class */
-                return $this->projectSubSchema($class, $context, $stack);
+        $payload = $this->projectClass($className, $context, $state);
+
+        $childStack = [...$stack, $key];
+        foreach ($this->referencedViews($payload->type) as [$referencedClass, $referencedState]) {
+            // Interfaces have no concrete shape to project; the mapper raises a
+            // dedicated error when it folds them.
+            if (interface_exists($referencedClass)) {
+                continue;
             }
-        );
-    }
 
-    /**
-     * @param class-string $className
-     *
-     * @throws \LogicException
-     * @throws \ReflectionException
-     */
-    private function projectSubSchema(string $className, ExtractionContext $context, ProcessingStackContext $stack): SerializedPayloadDefinition
-    {
-        // Recursion break: if class is already in stack, emit a $ref
-        if ($stack->has($className)) {
-            return $this->createRecursionReferencePayload($className);
+            $this->resolve($referencedClass, $context, $referencedState, $views, $childStack);
         }
 
-        return $this->projectClass($className, $context);
+        $views[$key] = $payload;
+    }
+
+    /**
+     * Collects the class-backed views referenced inside a serialized type, recursing into
+     * containers, unions, and inline object shapes. Each reference carries the state under
+     * which the referenced class should be projected.
+     *
+     * @return list<array{0: class-string, 1: ProjectionState}>
+     */
+    private function referencedViews(Type $type): array
+    {
+        $views = [];
+        $this->collectReferencedViews($type, $views);
+
+        return array_values($views);
+    }
+
+    /**
+     * @param array<string, array{0: class-string, 1: ProjectionState}> $views
+     */
+    private function collectReferencedViews(Type $type, array &$views): void
+    {
+        if ($type instanceof SerializedViewReferenceType) {
+            $views[(new ViewId($type->className, $type->childState->viewKey()))->key()] = [$type->className, $type->childState];
+            return;
+        }
+
+        if ($type instanceof ClassLikeType) {
+            // A bare class reference is the canonical view.
+            $views[(new ViewId($type->name))->key()] = [$type->name, NeutralProjectionState::instance()];
+            return;
+        }
+
+        if ($type instanceof DecoratedType || $type instanceof ArrayType || $type instanceof MapType) {
+            $this->collectReferencedViews($type->type, $views);
+            return;
+        }
+
+        if ($type instanceof UnionType || $type instanceof IntersectionType) {
+            foreach ($type->types as $subType) {
+                $this->collectReferencedViews($subType, $views);
+            }
+            return;
+        }
+
+        if ($type instanceof SerializedObjectType) {
+            foreach ($type->shape->concreteClasses as $concreteClass) {
+                // Discriminator subtypes are always referenced in their canonical view.
+                $views[(new ViewId($concreteClass))->key()] = [$concreteClass, NeutralProjectionState::instance()];
+            }
+
+            foreach ($type->shape->properties as $property) {
+                if ($property->type !== null) {
+                    $this->collectReferencedViews($property->type, $views);
+                }
+            }
+        }
     }
 
     /**
@@ -106,7 +170,7 @@ class SchemaExtractor
      * @throws \LogicException
      * @throws \ReflectionException
      */
-    private function projectClass(string $className, ExtractionContext $context): SerializedPayloadDefinition
+    private function projectClass(string $className, ExtractionContext $context, ProjectionState $state): SerializedPayloadDefinition
     {
         // 1. Discover
         $definition = $this->discoverer->discover($className);
@@ -118,16 +182,8 @@ class SchemaExtractor
         }
 
         // 3. Project serialized shape
-        $serializedDefinition = $this->serializationStrategy->project($definition, $context);
+        $serializedDefinition = $this->serializationStrategy->project($definition, $context, $state);
         return $this->applyAdditionalPropertiesDefault($serializedDefinition, $className);
-    }
-
-    /**
-     * @param class-string $className
-     */
-    private function createRecursionReferencePayload(string $className): SerializedPayloadDefinition
-    {
-        return new SerializedPayloadDefinition(new SerializedReferenceType($className));
     }
 
     /**
@@ -137,7 +193,8 @@ class SchemaExtractor
     private function applyAdditionalPropertiesDefault(SerializedPayloadDefinition $definition, string $className): SerializedPayloadDefinition
     {
         return new SerializedPayloadDefinition(
-            $this->applyAdditionalPropertiesDefaultToType($definition->type, $className)
+            $this->applyAdditionalPropertiesDefaultToType($definition->type, $className),
+            $definition->inlineOnly,
         );
     }
 
