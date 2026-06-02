@@ -12,7 +12,7 @@ interface JsonSchemaMapperInterface
 {
     /**
      * @param SerializedPayloadDefinition $definition The serialized payload definition
-     * @param callable(string): JsonSchemaInterface $schemaProvider A callable to request the nested JSON Schema of another class
+     * @param callable(string): SerializedPayloadDefinition $payloadProvider A callable to request the nested serialized payload of another class
      */
-    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): JsonSchemaInterface;
+    public function map(SerializedPayloadDefinition $definition, callable $payloadProvider): JsonSchemaInterface;
 }

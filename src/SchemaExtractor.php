@@ -9,12 +9,12 @@ use Zeusi\JsonSchemaExtractor\Discoverer\DiscovererInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\EnricherInterface;
 use Zeusi\JsonSchemaExtractor\Enricher\Runtime\EnrichmentRuntime;
 use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaMapperInterface;
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchemaInterface;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedReferenceType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Serialization\SerializationStrategyInterface;
 
@@ -53,11 +53,7 @@ class SchemaExtractor
     {
         $context ??= new ExtractionContext();
 
-        if (null === $context->find(ProcessingStackContext::class)) {
-            $context = $context->with(new ProcessingStackContext());
-        }
-
-        $schema = $this->extractSubSchema($className, $context);
+        $schema = $this->extractSubSchema($className, $context, new ProcessingStackContext());
         return $schema->jsonSerialize();
     }
 
@@ -69,16 +65,49 @@ class SchemaExtractor
      * @throws \LogicException
      * @throws \ReflectionException
      */
-    private function extractSubSchema(string $className, ExtractionContext $context): JsonSchemaInterface
+    private function extractSubSchema(string $className, ExtractionContext $context, ProcessingStackContext $stack): JsonSchemaInterface
     {
-        $processingStack = $this->getProcessingStack($context);
-        // Recursion break: if class is already in stack, emit a $ref
-        if ($processingStack->has($className)) {
-            return (new JsonSchema())->setRef("#/components/schemas/" . str_replace('\\', '.', $className));
+        if ($stack->has($className)) {
+            $serializedDefinition = $this->createRecursionReferencePayload($className);
+        } else {
+            $stack = $stack->pushed($className);
+            $serializedDefinition = $this->projectClass($className, $context);
         }
 
-        $context = $context->with($processingStack->pushed($className));
+        // 4. Map (passing an anonymous function to allow the Mapper to request projected nested payloads)
+        return $this->mapper->map(
+            $serializedDefinition,
+            function (string $class) use ($context, $stack): SerializedPayloadDefinition {
+                /** @var class-string $class */
+                return $this->projectSubSchema($class, $context, $stack);
+            }
+        );
+    }
 
+    /**
+     * @param class-string $className
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
+    private function projectSubSchema(string $className, ExtractionContext $context, ProcessingStackContext $stack): SerializedPayloadDefinition
+    {
+        // Recursion break: if class is already in stack, emit a $ref
+        if ($stack->has($className)) {
+            return $this->createRecursionReferencePayload($className);
+        }
+
+        return $this->projectClass($className, $context);
+    }
+
+    /**
+     * @param class-string $className
+     *
+     * @throws \LogicException
+     * @throws \ReflectionException
+     */
+    private function projectClass(string $className, ExtractionContext $context): SerializedPayloadDefinition
+    {
         // 1. Discover
         $definition = $this->discoverer->discover($className);
 
@@ -90,16 +119,15 @@ class SchemaExtractor
 
         // 3. Project serialized shape
         $serializedDefinition = $this->serializationStrategy->project($definition, $context);
-        $serializedDefinition = $this->applyAdditionalPropertiesDefault($serializedDefinition, $className);
+        return $this->applyAdditionalPropertiesDefault($serializedDefinition, $className);
+    }
 
-        // 4. Map (Passing an anonymous function to allow the Mapper to recursively request schemas)
-        return $this->mapper->map(
-            $serializedDefinition,
-            function (string $class) use ($context): JsonSchemaInterface {
-                /** @var class-string $class */
-                return $this->extractSubSchema($class, $context);
-            }
-        );
+    /**
+     * @param class-string $className
+     */
+    private function createRecursionReferencePayload(string $className): SerializedPayloadDefinition
+    {
+        return new SerializedPayloadDefinition(new SerializedReferenceType($className));
     }
 
     /**
@@ -172,13 +200,5 @@ class SchemaExtractor
         /** @var AdditionalProperties $attribute */
         $attribute = $attributes[0]->newInstance();
         return $attribute->enabled;
-    }
-
-    /**
-     * @throws \LogicException
-     */
-    private function getProcessingStack(ExtractionContext $context): ProcessingStackContext
-    {
-        return $context->find(ProcessingStackContext::class) ?? throw new \LogicException('ProcessingStackContext not found in ExtractionContext');
     }
 }

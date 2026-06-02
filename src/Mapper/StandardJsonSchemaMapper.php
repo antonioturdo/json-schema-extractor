@@ -3,7 +3,6 @@
 namespace Zeusi\JsonSchemaExtractor\Mapper;
 
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchemaInterface;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\SchemaType;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
@@ -16,6 +15,7 @@ use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\IntersectionType;
 use Zeusi\JsonSchemaExtractor\Model\Type\MapType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedReferenceType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeAnnotations;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeConstraints;
@@ -30,8 +30,8 @@ use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
  */
 class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
 {
-    /** @var callable(string): JsonSchemaInterface */
-    private $schemaProvider;
+    /** @var callable(string): SerializedPayloadDefinition */
+    private $payloadProvider;
 
     /** @var array<string, JsonSchema> */
     private array $definitions = [];
@@ -50,14 +50,14 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         private readonly StandardJsonSchemaMapperOptions $options = new StandardJsonSchemaMapperOptions()
     ) {}
 
-    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): JsonSchema
+    public function map(SerializedPayloadDefinition $definition, callable $payloadProvider): JsonSchema
     {
         $isRootMap = $this->mapDepth === 0;
         if ($isRootMap) {
             $this->resetDefinitionsState($this->extractRootObjectDefinition($definition->type)?->name);
         }
 
-        $this->schemaProvider = $schemaProvider;
+        $this->payloadProvider = $payloadProvider;
 
         ++$this->mapDepth;
         try {
@@ -191,6 +191,10 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
             return $this->mapObjectShape($type->shape);
         }
 
+        if ($type instanceof SerializedReferenceType) {
+            return (new JsonSchema())->setRef($this->recursionRef($type->className));
+        }
+
         if ($type instanceof BuiltinType) {
             return $this->mapBuiltinType($type);
         }
@@ -287,12 +291,8 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
      */
     private function provideNestedSchema(string $className): JsonSchema
     {
-        $schema = ($this->schemaProvider)($className);
-        if (!$schema instanceof JsonSchema) {
-            throw new \LogicException('StandardJsonSchemaMapper can only compose nested schemas produced as JsonSchema instances.');
-        }
-
-        return $schema;
+        $payload = ($this->payloadProvider)($className);
+        return $this->mapType($payload->type);
     }
 
     /**
@@ -345,6 +345,14 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         $this->buildingDefinitions[$className] = true;
         $this->definitions[$definitionName] = $this->provideNestedSchema($className);
         unset($this->buildingDefinitions[$className]);
+    }
+
+    /**
+     * @param class-string $className
+     */
+    private function recursionRef(string $className): string
+    {
+        return '#/components/schemas/' . str_replace('\\', '.', $className);
     }
 
     /**

@@ -17,6 +17,7 @@ use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapperOptions;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedReferenceType;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\SchemaExtractorOptions;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
@@ -315,7 +316,7 @@ final class RecursionProbeJsonSchemaMapper implements JsonSchemaMapperInterface
         private readonly string $recursiveClass
     ) {}
 
-    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): JsonSchema
+    public function map(SerializedPayloadDefinition $definition, callable $payloadProvider): JsonSchema
     {
         ++$this->mapCalls;
 
@@ -323,11 +324,14 @@ final class RecursionProbeJsonSchemaMapper implements JsonSchemaMapperInterface
             return (new JsonSchema())->setTitle('recursion guard failed');
         }
 
-        $childSchema = $schemaProvider($this->recursiveClass);
-        if (!$childSchema instanceof JsonSchema) {
-            throw new \LogicException('Expected recursive schema provider to return a Schema instance.');
+        $childPayload = $payloadProvider($this->recursiveClass);
+        $childType = $childPayload->type;
+        if (!$childType instanceof SerializedReferenceType) {
+            throw new \LogicException('Expected recursive payload to contain a serialized reference.');
         }
 
-        return (new JsonSchema())->addProperty('child', $childSchema);
+        $ref = '#/components/schemas/' . str_replace('\\', '.', $childType->className);
+
+        return (new JsonSchema())->addProperty('child', (new JsonSchema())->setRef($ref));
     }
 }
