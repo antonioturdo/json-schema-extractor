@@ -164,6 +164,7 @@ use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
 use Zeusi\JsonSchemaExtractor\Serialization\SerializationStrategyInterface;
+use Zeusi\JsonSchemaExtractor\Serialization\State\ProjectionState;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 
 final class AppSerializerStrategy implements SerializationStrategyInterface
@@ -172,9 +173,14 @@ final class AppSerializerStrategy implements SerializationStrategyInterface
         private SymfonySerializerStrategy $inner,
     ) {}
 
-    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedPayloadDefinition
+    public function initialState(ExtractionContext $context): ProjectionState
     {
-        $payload = $this->inner->project($definition, $context);
+        return $this->inner->initialState($context);
+    }
+
+    public function project(ClassDefinition $definition, ExtractionContext $context, ProjectionState $state): SerializedPayloadDefinition
+    {
+        $payload = $this->inner->project($definition, $context, $state);
         if (!$payload->type instanceof SerializedObjectType) {
             return $payload;
         }
@@ -196,14 +202,17 @@ final class AppSerializerStrategy implements SerializationStrategyInterface
             );
         }
 
-        return new SerializedPayloadDefinition(new SerializedObjectType(new SerializedObjectDefinition(
-            name: $payload->type->shape->name,
-            properties: $properties,
-            title: $payload->type->shape->title,
-            description: $payload->type->shape->description,
-            additionalProperties: $payload->type->shape->additionalProperties,
-            concreteClasses: $payload->type->shape->concreteClasses,
-        )));
+        return new SerializedPayloadDefinition(
+            new SerializedObjectType(new SerializedObjectDefinition(
+                name: $payload->type->shape->name,
+                properties: $properties,
+                title: $payload->type->shape->title,
+                description: $payload->type->shape->description,
+                additionalProperties: $payload->type->shape->additionalProperties,
+                concreteClasses: $payload->type->shape->concreteClasses,
+            )),
+            $payload->inlineOnly,
+        );
     }
 }
 ```
