@@ -3,16 +3,12 @@
 namespace Zeusi\JsonSchemaExtractor\Mapper;
 
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchemaInterface;
-use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedProjection;
 
 /**
- * Translates the serialized payload definition into the final JSON Schema representation.
+ * Translates a resolved serialized projection into the final JSON Schema representation.
  */
 interface JsonSchemaMapperInterface
 {
-    /**
-     * @param SerializedPayloadDefinition $definition The serialized payload definition
-     * @param callable(string): JsonSchemaInterface $schemaProvider A callable to request the nested JSON Schema of another class
-     */
-    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): JsonSchemaInterface;
+    public function map(SerializedProjection $projection): JsonSchemaInterface;
 }

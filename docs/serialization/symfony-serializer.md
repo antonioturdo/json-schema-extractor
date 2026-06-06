@@ -231,6 +231,7 @@ This keeps custom behavior explicit while still reusing Symfony metadata support
 | `SerializedName` | property key renamed in schema | Uses serialized name as output field name. |
 | Serialization groups | fields included/excluded | Based on provided serializer context groups. |
 | `AbstractNormalizer::IGNORED_ATTRIBUTES` | fields excluded | Uses original PHP attribute names from the serializer context. |
+| `AbstractNormalizer::ATTRIBUTES` | per-property nested views | Filters which attributes are serialized and projects each nested class under its narrowed view, emitted inline as a bespoke shape. Uses original PHP attribute names. |
 | `DateTimeInterface` normalization | `type: string`, `format: date-time` (or `date` for known formats) | Replaces default `json_encode()` object shape. |
 | `DateTimeZone` normalization | `type: string` | Matches `DateTimeZoneNormalizer` behavior. |
 | `DateInterval` normalization | `type: string`, often `format: duration` | Custom formats may remain plain string. |
@@ -247,13 +248,12 @@ This keeps custom behavior explicit while still reusing Symfony metadata support
 ## Limitations
 
 - Runtime-dependent serializer customizations outside known mappings are not handled automatically.
-- `AbstractNormalizer::ATTRIBUTES` is not modeled automatically.
 - Runtime state-dependent options are not modeled automatically:
   - `AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS` can preserve empty object-like values as JSON objects, but it does not prove that the same property cannot serialize as an array or dictionary when populated.
   - `AbstractObjectNormalizer::SKIP_UNINITIALIZED_VALUES` can omit uninitialized properties, but the strategy does not inspect constructor/body assignments or object instance state.
-- Depth and circular-reference handlers are not modeled automatically:
-  - `#[MaxDepth]` / `AbstractObjectNormalizer::ENABLE_MAX_DEPTH` affect traversal depth during runtime serialization; the strategy does not currently alter nested schema expansion based on serializer depth metadata.
-  - `AbstractObjectNormalizer::MAX_DEPTH_HANDLER` and `AbstractNormalizer::CIRCULAR_REFERENCE_HANDLER` can replace nested objects with arbitrary application-specific values; model these cases with a custom serialization strategy when needed.
+- `#[MaxDepth]` / `AbstractObjectNormalizer::ENABLE_MAX_DEPTH` are not modeled as a tightened schema, and do not need to be: recursive references are already broken with a `$ref` to the class definition, and a depth-bounded payload is a valid instance of that (looser) recursive schema, since a recursive attribute that the serializer omits at the depth limit is optional in the schema. The generated schema therefore describes the recursive structure soundly; it just does not forbid nesting beyond the runtime depth limit. This reasoning assumes the recursive attribute is optional; a required, non-nullable self-reference is a separate, degenerate modeling case.
+- Handlers that replace nested objects with arbitrary application-specific values are not modeled automatically:
+  - `AbstractObjectNormalizer::MAX_DEPTH_HANDLER` and `AbstractNormalizer::CIRCULAR_REFERENCE_HANDLER` produce opaque, code-defined output; model these cases with a custom serialization strategy when needed.
 
 ## Example
 

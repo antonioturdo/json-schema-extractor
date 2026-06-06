@@ -12,6 +12,7 @@ use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Serialization\SerializationStrategyInterface;
+use Zeusi\JsonSchemaExtractor\Serialization\State\ProjectionState;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CustomNormalizedMoney;
 
@@ -21,9 +22,14 @@ final class CustomSerializationStrategy implements SerializationStrategyInterfac
         private readonly SymfonySerializerStrategy $inner,
     ) {}
 
-    public function project(ClassDefinition $definition, ExtractionContext $context): SerializedPayloadDefinition
+    public function initialState(ExtractionContext $context): ProjectionState
     {
-        $payload = $this->inner->project($definition, $context);
+        return $this->inner->initialState($context);
+    }
+
+    public function project(ClassDefinition $definition, ExtractionContext $context, ProjectionState $state): SerializedPayloadDefinition
+    {
+        $payload = $this->inner->project($definition, $context, $state);
         if (!$payload->type instanceof SerializedObjectType) {
             return $payload;
         }
@@ -37,14 +43,17 @@ final class CustomSerializationStrategy implements SerializationStrategyInterfac
             );
         }
 
-        return new SerializedPayloadDefinition(new SerializedObjectType(new SerializedObjectDefinition(
-            name: $payload->type->shape->name,
-            properties: $properties,
-            title: $payload->type->shape->title,
-            description: $payload->type->shape->description,
-            additionalProperties: $payload->type->shape->additionalProperties,
-            concreteClasses: $payload->type->shape->concreteClasses,
-        )));
+        return new SerializedPayloadDefinition(
+            new SerializedObjectType(new SerializedObjectDefinition(
+                name: $payload->type->shape->name,
+                properties: $properties,
+                title: $payload->type->shape->title,
+                description: $payload->type->shape->description,
+                additionalProperties: $payload->type->shape->additionalProperties,
+                concreteClasses: $payload->type->shape->concreteClasses,
+            )),
+            $payload->inlineOnly,
+        );
     }
 
     private function projectCustomType(string $propertyName, ?Type $type): ?Type

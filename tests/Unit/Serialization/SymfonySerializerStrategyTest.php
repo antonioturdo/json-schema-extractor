@@ -30,10 +30,15 @@ use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
 use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\MapType;
 use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedViewReferenceType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Types;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonSerializableProjection;
+use Zeusi\JsonSchemaExtractor\Serialization\State\NeutralProjectionState;
+use Zeusi\JsonSchemaExtractor\Serialization\State\SymfonyProjectionState;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AttributesCompany;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AttributesRoot;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CustomNormalizedObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorCat;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
@@ -63,7 +68,7 @@ class SymfonySerializerStrategyTest extends TestCase
     {
         $definition = $this->discoverer->discover(SerializerObject::class);
 
-        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext()));
+        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext(), NeutralProjectionState::instance()));
 
         self::assertArrayNotHasKey('name', $projectedDefinition->properties);
         self::assertSame('renamed_field', $this->requireSerializedProperty($projectedDefinition, 'renamed_field')->name);
@@ -75,7 +80,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $definition = $this->discoverer->discover(SerializerObject::class);
         $context = (new ExtractionContext())->with(new SymfonySerializerContext(context: ['groups' => ['read']]));
 
-        $definition = $this->requireRootObject($this->strategy->project($definition, $context));
+        $definition = $this->requireRootObject($this->strategy->project($definition, $context, NeutralProjectionState::instance()));
 
         self::assertArrayHasKey('id', $definition->properties);
         self::assertArrayNotHasKey('name', $definition->properties);
@@ -89,7 +94,7 @@ class SymfonySerializerStrategyTest extends TestCase
             AbstractNormalizer::IGNORED_ATTRIBUTES => ['name', 'union'],
         ]));
 
-        $definition = $this->requireRootObject($this->strategy->project($definition, $context));
+        $definition = $this->requireRootObject($this->strategy->project($definition, $context, NeutralProjectionState::instance()));
 
         self::assertArrayHasKey('id', $definition->properties);
         self::assertArrayNotHasKey('renamed_field', $definition->properties);
@@ -101,7 +106,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $definition = $this->discoverer->discover(DiscriminatorCat::class);
         $context = (new ExtractionContext())->with(new SymfonySerializerContext(context: ['groups' => ['read']]));
 
-        $definition = $this->requireRootObject($this->strategy->project($definition, $context));
+        $definition = $this->requireRootObject($this->strategy->project($definition, $context, NeutralProjectionState::instance()));
 
         $typeField = $this->requireSerializedProperty($definition, 'type');
         self::assertTrue($typeField->required);
@@ -152,7 +157,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $amount->setType(new ClassLikeType('GMP'));
         $definition->addProperty($amount);
 
-        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext()));
+        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext(), NeutralProjectionState::instance()));
 
         $this->assertPlainStringField($this->requireSerializedProperty($projectedDefinition, 'amount'));
     }
@@ -162,7 +167,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $definition = $this->discoverer->discover(CustomNormalizedObject::class);
         $strategy = new CustomSerializationStrategy($this->strategy);
 
-        $projectedDefinition = $this->requireRootObject($strategy->project($definition, new ExtractionContext()));
+        $projectedDefinition = $this->requireRootObject($strategy->project($definition, new ExtractionContext(), NeutralProjectionState::instance()));
 
         $this->assertPlainStringField($this->requireSerializedProperty($projectedDefinition, 'amount'));
         $this->assertPlainStringField($this->requireSerializedProperty($projectedDefinition, 'owner'));
@@ -219,7 +224,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $shape->addProperty($name);
 
         $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
-        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext()));
+        $projectedDefinition = $this->requireRootObject($this->strategy->project($definition, new ExtractionContext(), NeutralProjectionState::instance()));
 
         self::assertArrayHasKey('id', $projectedDefinition->properties);
         self::assertArrayHasKey('name', $projectedDefinition->properties);
@@ -240,7 +245,7 @@ class SymfonySerializerStrategyTest extends TestCase
 
         $this->expectException(\LogicException::class);
 
-        $this->strategy->project($definition, new ExtractionContext());
+        $this->strategy->project($definition, new ExtractionContext(), NeutralProjectionState::instance());
     }
 
     private function enrichSerializerObject(?ExtractionContext $context = null): SerializedObjectDefinition
@@ -249,7 +254,7 @@ class SymfonySerializerStrategyTest extends TestCase
         $definition = $this->discoverer->discover(SerializerObject::class);
 
         (new PhpStanEnricher())->enrich($definition, $context, new EnrichmentRuntime());
-        $definition = $this->requireRootObject($this->strategy->project($definition, $context));
+        $definition = $this->requireRootObject($this->strategy->project($definition, $context, NeutralProjectionState::instance()));
 
         return $definition;
     }
@@ -350,6 +355,85 @@ class SymfonySerializerStrategyTest extends TestCase
             'Expected form children field to have a type expression.'
         ));
         self::assertInstanceOf(MapType::class, $childrenType);
+    }
+
+    public function testProjectFiltersRootPropertiesByAttributesView(): void
+    {
+        $definition = $this->discoverer->discover(AttributesRoot::class);
+
+        $root = $this->requireRootObject($this->strategy->project(
+            $definition,
+            new ExtractionContext(),
+            new SymfonyProjectionState(['company' => ['name']]),
+        ));
+
+        self::assertArrayHasKey('company', $root->properties);
+        self::assertArrayNotHasKey('id', $root->properties);
+        self::assertArrayNotHasKey('note', $root->properties);
+    }
+
+    public function testProjectEmitsViewReferenceForNarrowedNestedClass(): void
+    {
+        $definition = $this->discoverer->discover(AttributesRoot::class);
+
+        $root = $this->requireRootObject($this->strategy->project(
+            $definition,
+            new ExtractionContext(),
+            new SymfonyProjectionState(['company' => ['name']]),
+        ));
+
+        $company = $this->requireSerializedProperty($root, 'company');
+        self::assertInstanceOf(SerializedViewReferenceType::class, $company->type);
+        self::assertSame(AttributesCompany::class, $company->type->className);
+        self::assertSame(
+            (new SymfonyProjectionState(['name']))->viewKey(),
+            $company->type->childState->viewKey(),
+        );
+    }
+
+    public function testProjectWithEmptyAttributesViewSerializesNoProperties(): void
+    {
+        $definition = $this->discoverer->discover(AttributesRoot::class);
+
+        // ATTRIBUTES present but empty allows no attribute.
+        $root = $this->requireRootObject($this->strategy->project(
+            $definition,
+            new ExtractionContext(),
+            new SymfonyProjectionState([]),
+        ));
+
+        self::assertSame([], $root->properties);
+    }
+
+    public function testProjectKeepsCanonicalReferenceForLeafAttribute(): void
+    {
+        $definition = $this->discoverer->discover(AttributesRoot::class);
+
+        // "company" listed as a leaf (no nested slice) keeps the canonical class reference.
+        $root = $this->requireRootObject($this->strategy->project(
+            $definition,
+            new ExtractionContext(),
+            new SymfonyProjectionState(['company']),
+        ));
+
+        $company = $this->requireSerializedProperty($root, 'company');
+        self::assertInstanceOf(ClassLikeType::class, $company->type);
+        self::assertArrayNotHasKey('id', $root->properties);
+    }
+
+    public function testProjectMarksAttributesViewPayloadAsInlineOnly(): void
+    {
+        $definition = $this->discoverer->discover(AttributesRoot::class);
+
+        $narrowed = $this->strategy->project(
+            $definition,
+            new ExtractionContext(),
+            new SymfonyProjectionState(['company' => ['name']]),
+        );
+        self::assertTrue($narrowed->inlineOnly);
+
+        $canonical = $this->strategy->project($definition, new ExtractionContext(), NeutralProjectionState::instance());
+        self::assertFalse($canonical->inlineOnly);
     }
 
     private function requireSerializedProperty(SerializedObjectDefinition $shape, string $propertyName): SerializedPropertyDefinition

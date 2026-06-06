@@ -6,22 +6,21 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
+use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Zeusi\JsonSchemaExtractor\Context\ExtractionContext;
 use Zeusi\JsonSchemaExtractor\Context\SymfonySerializerContext;
 use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpDocumentorEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
 use Zeusi\JsonSchemaExtractor\Mapper\ClassReferenceStrategy;
-use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaMapperInterface;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapperOptions;
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
-use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\SchemaExtractorOptions;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AdditionalPropertiesObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AttributesRoot;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\BasicObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CircularObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ComplexDiscriminatorContainer;
@@ -284,50 +283,93 @@ class SchemaExtractorTest extends TestCase
      */
     public function testGenerateBreaksCircularReferencesWhenClassSchemasAreInlined(): void
     {
-        $mapper = new RecursionProbeJsonSchemaMapper(CircularObject::class);
         $extractor = new SchemaExtractor(
             new ReflectionDiscoverer(),
             [],
             new JsonEncodeSerializationStrategy(),
-            $mapper
+            new StandardJsonSchemaMapper(
+                new StandardJsonSchemaMapperOptions(classReferenceStrategy: ClassReferenceStrategy::Inline)
+            )
         );
 
         $schema = $extractor->extract(CircularObject::class);
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
-        self::assertSame(
-            '#/components/schemas/Zeusi.JsonSchemaExtractor.Tests.Fixtures.CircularObject',
-            $schema['properties']['child']['$ref']
-        );
-        self::assertSame(1, $mapper->mapCalls);
+        // The self-referential "child" is broken with a reference back to the document root
+        // ("#"), instead of expanding the cycle indefinitely (which would never terminate).
+        $childRefs = array_column($schema['properties']['child']['anyOf'] ?? [], '$ref');
+        self::assertContains('#', $childRefs);
     }
-}
-
-final class RecursionProbeJsonSchemaMapper implements JsonSchemaMapperInterface
-{
-    public int $mapCalls = 0;
 
     /**
-     * @param class-string $recursiveClass
+     * @throws \ReflectionException
      */
-    public function __construct(
-        private readonly string $recursiveClass
-    ) {}
-
-    public function map(SerializedPayloadDefinition $definition, callable $schemaProvider): JsonSchema
+    public function testGenerateAppliesSymfonySerializerAttributesContextPerView(): void
     {
-        ++$this->mapCalls;
+        $extractor = new SchemaExtractor(
+            new ReflectionDiscoverer(),
+            [],
+            new SymfonySerializerStrategy(new ClassMetadataFactory(new AttributeLoader())),
+            new StandardJsonSchemaMapper(
+                new StandardJsonSchemaMapperOptions(classReferenceStrategy: ClassReferenceStrategy::Definitions)
+            )
+        );
 
-        if ($this->mapCalls > 1) {
-            return (new JsonSchema())->setTitle('recursion guard failed');
-        }
+        $context = (new ExtractionContext())->with(new SymfonySerializerContext([
+            AbstractNormalizer::ATTRIBUTES => ['company' => ['name']],
+        ]));
 
-        $childSchema = $schemaProvider($this->recursiveClass);
-        if (!$childSchema instanceof JsonSchema) {
-            throw new \LogicException('Expected recursive schema provider to return a Schema instance.');
-        }
+        $schema = $extractor->extract(AttributesRoot::class, $context);
+        self::assertIsArray($schema);
+        /** @var array<string, mixed> $schema */
 
-        return (new JsonSchema())->addProperty('child', $childSchema);
+        // ATTRIBUTES filters the root to only the "company" attribute...
+        self::assertArrayHasKey('company', $schema['properties']);
+        self::assertArrayNotHasKey('id', $schema['properties']);
+        self::assertArrayNotHasKey('note', $schema['properties']);
+
+        // ...and the narrowed "company" is inlined as an anonymous shape (not a shared
+        // definition), containing only the narrowed "name" attribute.
+        $company = $schema['properties']['company'];
+        self::assertArrayNotHasKey('$ref', $company);
+        self::assertSame('object', $company['type']);
+        self::assertArrayHasKey('name', $company['properties']);
+        self::assertArrayNotHasKey('address', $company['properties']);
+        self::assertArrayNotHasKey('taxId', $company['properties']);
+
+        // No view-specific definition is emitted for the narrowed shape.
+        self::assertArrayNotHasKey('definitions', $schema);
+    }
+
+    /**
+     * @throws \ReflectionException
+     */
+    public function testGenerateAppliesEmptyNestedAttributesAsEmptyObject(): void
+    {
+        $extractor = new SchemaExtractor(
+            new ReflectionDiscoverer(),
+            [],
+            new SymfonySerializerStrategy(new ClassMetadataFactory(new AttributeLoader())),
+            new StandardJsonSchemaMapper(
+                new StandardJsonSchemaMapperOptions(classReferenceStrategy: ClassReferenceStrategy::Definitions)
+            )
+        );
+
+        $context = (new ExtractionContext())->with(new SymfonySerializerContext([
+            AbstractNormalizer::ATTRIBUTES => ['company' => []],
+        ]));
+
+        $schema = $extractor->extract(AttributesRoot::class, $context);
+        self::assertIsArray($schema);
+        /** @var array<string, mixed> $schema */
+
+        // A nested empty slice narrows "company" to no attributes: an empty object, not the
+        // canonical (full) Company.
+        $company = $schema['properties']['company'];
+        self::assertSame('object', $company['type']);
+        self::assertArrayNotHasKey('$ref', $company);
+        self::assertArrayNotHasKey('properties', $company);
+        self::assertArrayNotHasKey('definitions', $schema);
     }
 }

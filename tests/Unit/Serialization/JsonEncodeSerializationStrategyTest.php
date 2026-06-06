@@ -24,6 +24,7 @@ use Zeusi\JsonSchemaExtractor\Model\Type\Types;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonEncodeSerializationStrategy;
 use Zeusi\JsonSchemaExtractor\Serialization\JsonSerializableProjection;
+use Zeusi\JsonSchemaExtractor\Serialization\State\NeutralProjectionState;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\BasicObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
@@ -72,7 +73,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         $definition->addProperty($shape);
 
         $context = (new ExtractionContext())->with(new JsonEncodeContext(\JSON_FORCE_OBJECT));
-        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, $context));
+        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, $context, NeutralProjectionState::instance()));
 
         self::assertSame('App\\Payload', $projected->name);
         self::assertSame('Payload', $projected->title);
@@ -101,7 +102,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         ]));
         $definition->addProperty($events);
 
-        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext()));
+        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext(), NeutralProjectionState::instance()));
 
         $eventsType = $this->requireType(
             $this->requireSerializedProperty($projected, 'events')->type,
@@ -144,7 +145,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
 
         $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
 
-        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext()));
+        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext(), NeutralProjectionState::instance()));
 
         self::assertSame(JsonSerializablePhpDocObject::class, $projected->name);
         self::assertSame('Payload', $projected->title);
@@ -166,7 +167,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         $definition = new ClassDefinition(className: JsonSerializablePhpDocObject::class);
         $definition->addMethod(new MethodDefinition('jsonSerialize', Types::string()));
 
-        $payload = (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
+        $payload = (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext(), NeutralProjectionState::instance());
 
         $this->assertBuiltin($payload->type, 'string');
     }
@@ -185,7 +186,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         $shape->addProperty($id);
         $definition->addMethod(new MethodDefinition('jsonSerialize', new InlineObjectType($shape)));
 
-        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext()));
+        $projected = $this->requireRootObject((new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext(), NeutralProjectionState::instance()));
 
         self::assertArrayHasKey('internal', $projected->properties);
         self::assertArrayNotHasKey('id', $projected->properties);
@@ -197,7 +198,7 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
 
         $this->expectException(\LogicException::class);
 
-        (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext());
+        (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext(), NeutralProjectionState::instance());
     }
 
     private function assertDateTimeShape(SerializedPropertyDefinition $property): void
