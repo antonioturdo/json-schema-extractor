@@ -15,6 +15,7 @@ use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AmbiguousJsonSerializablePhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ConflictingJsonSerializablePhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\PhpDoc\PhpDocNestedArrayObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\PhpDocObject;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
 
@@ -140,6 +141,25 @@ class PhpStanEnricherTest extends TestCase
 
         $this->assertBuiltin($this->requireType($properties['url']->getType(), 'Expected endpoints[].url to have a type.'), 'string');
         $this->assertBuiltin($this->requireType($properties['active']->getType(), 'Expected endpoints[].active to have a type.'), 'bool');
+    }
+
+    public function testEnrichResolvesArrayOfObjectsImportedFromDifferentNamespace(): void
+    {
+        $definition = $this->discoverer->discover(PhpDocObject::class);
+
+        $this->enricher->enrich($definition, new ExtractionContext(), new EnrichmentRuntime());
+
+        $arrayExpr = $this->assertArrayOf(
+            $this->requireType(
+                $this->requireProperty($definition, 'listOfObjectsDifferentNamespace')->getType(),
+                'Expected listOfObjectsDifferentNamespace to have a type.'
+            )
+        );
+
+        self::assertSame(
+            [PhpDocNestedArrayObject::class],
+            $this->collectTypeNames($arrayExpr->type)
+        );
     }
 
     public function testEnrichHandlesIntegerRanges(): void

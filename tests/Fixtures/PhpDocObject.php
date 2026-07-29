@@ -2,6 +2,8 @@
 
 namespace Zeusi\JsonSchemaExtractor\Tests\Fixtures;
 
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\PhpDoc\PhpDocNestedArrayObject;
+
 /**
  * Short summary for PhpDocObject.
  *
@@ -136,6 +138,9 @@ class PhpDocObject
 
     /** @var int-mask<1, 2, 4> */
     public $permissionsMask;
+
+    /** @var PhpDocNestedArrayObject[] */
+    public array $listOfObjectsDifferentNamespace;
 
     private array $getterList = [];
 

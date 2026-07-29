@@ -630,6 +630,15 @@ class PhpStanEnricher implements EnricherInterface
             return $candidate;
         }
 
+        if (class_exists(\phpDocumentor\Reflection\Types\ContextFactory::class)) {
+            $aliases = (new \phpDocumentor\Reflection\Types\ContextFactory())
+                ->createFromReflector($context)
+                ->getNamespaceAliases();
+            if (isset($aliases[$name])) {
+                $name = $aliases[$name];
+            }
+        }
+
         if (class_exists($name) || interface_exists($name) || enum_exists($name)) {
             return $name;
         }
