@@ -389,6 +389,15 @@ final class TypeUtils
         $currentBaseType = self::unwrapDecorated($currentType);
         $nextBaseType = self::unwrapDecorated($nextType);
 
+        // `UnknownType` is the bottom of the type lattice: an unresolved type must never
+        // degrade an already-resolved one, but any concrete type may upgrade an unknown.
+        if ($nextBaseType instanceof UnknownType) {
+            return $currentBaseType instanceof UnknownType;
+        }
+        if ($currentBaseType instanceof UnknownType) {
+            return true;
+        }
+
         if ($currentBaseType instanceof UnionType) {
             // `toBranches()` intentionally splits only top-level unions.
             // A decorated union would require a policy for distributing wrapper metadata to each branch.
@@ -404,11 +413,13 @@ final class TypeUtils
         }
 
         if ($currentBaseType instanceof ArrayType) {
-            return $nextBaseType instanceof ArrayType;
+            return $nextBaseType instanceof ArrayType
+                && !self::isLessSpecificItem($currentBaseType->type, $nextBaseType->type);
         }
 
         if ($currentBaseType instanceof MapType) {
-            return $nextBaseType instanceof MapType;
+            return $nextBaseType instanceof MapType
+                && !self::isLessSpecificItem($currentBaseType->type, $nextBaseType->type);
         }
 
         if ($currentBaseType instanceof InlineObjectType) {
@@ -420,6 +431,17 @@ final class TypeUtils
         }
 
         return false;
+    }
+
+    /**
+     * True when `$next` is strictly less specific than `$current`, i.e. it would
+     * replace a resolved item with an `UnknownType`. Used to keep container
+     * replacements (array/map) from degrading an already-resolved element type.
+     */
+    private static function isLessSpecificItem(Type $current, Type $next): bool
+    {
+        return self::unwrapDecorated($next) instanceof UnknownType
+            && !(self::unwrapDecorated($current) instanceof UnknownType);
     }
 
     /**

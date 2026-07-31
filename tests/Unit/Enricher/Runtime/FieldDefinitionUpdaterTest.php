@@ -1,6 +1,6 @@
 <?php
 
-namespace Zeusi\JsonSchemaExtractor\Tests\Unit\Enricher;
+namespace Zeusi\JsonSchemaExtractor\Tests\Unit\Enricher\Runtime;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;

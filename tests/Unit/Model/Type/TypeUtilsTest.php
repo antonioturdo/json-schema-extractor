@@ -9,11 +9,13 @@ use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
 use Zeusi\JsonSchemaExtractor\Model\Type\IntersectionType;
+use Zeusi\JsonSchemaExtractor\Model\Type\MapType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeAnnotations;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeConstraints;
 use Zeusi\JsonSchemaExtractor\Model\Type\TypeUtils;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
+use Zeusi\JsonSchemaExtractor\Model\Type\UnknownType;
 
 #[CoversClass(TypeUtils::class)]
 final class TypeUtilsTest extends TestCase
@@ -184,6 +186,51 @@ final class TypeUtilsTest extends TestCase
             ['one'],
             ['one', ['nested' => true]]
         ));
+    }
+
+    public function testMergeCompatibleDeclaredTypeKeepsResolvedArrayItemOverUnknown(): void
+    {
+        $current = new ArrayType(new ClassLikeType(\stdClass::class));
+
+        $merged = TypeUtils::mergeCompatibleDeclaredType($current, new ArrayType(new UnknownType()));
+
+        // The less specific `array<unknown>` must not replace `array<stdClass>`.
+        self::assertNull($merged);
+    }
+
+    public function testMergeCompatibleDeclaredTypeKeepsResolvedMapValueOverUnknown(): void
+    {
+        $current = new MapType(new ClassLikeType(\stdClass::class));
+
+        $merged = TypeUtils::mergeCompatibleDeclaredType($current, new MapType(new UnknownType()));
+
+        self::assertNull($merged);
+    }
+
+    public function testMergeCompatibleDeclaredTypeRefinesArrayItemWhenNextIsMoreSpecific(): void
+    {
+        $current = new ArrayType(new UnknownType());
+
+        $merged = TypeUtils::mergeCompatibleDeclaredType($current, new ArrayType(new ClassLikeType(\stdClass::class)));
+
+        self::assertInstanceOf(ArrayType::class, $merged);
+        self::assertInstanceOf(ClassLikeType::class, $merged->type);
+        self::assertSame(\stdClass::class, $merged->type->name);
+    }
+
+    public function testMergeCompatibleDeclaredTypeKeepsResolvedTopLevelTypeOverUnknown(): void
+    {
+        $merged = TypeUtils::mergeCompatibleDeclaredType(new ClassLikeType(\stdClass::class), new UnknownType());
+
+        self::assertNull($merged);
+    }
+
+    public function testMergeCompatibleDeclaredTypeUpgradesUnknownWithConcreteType(): void
+    {
+        $merged = TypeUtils::mergeCompatibleDeclaredType(new UnknownType(), new ClassLikeType(\stdClass::class));
+
+        self::assertInstanceOf(ClassLikeType::class, $merged);
+        self::assertSame(\stdClass::class, $merged->name);
     }
 
     private static function builtinName(Type $type): string
