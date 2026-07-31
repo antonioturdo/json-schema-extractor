@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-07-31
+
+### Fixed
+
+- An unresolved type (`UnknownType`) could overwrite an already-resolved type
+  during declared-type merging, at the top level or nested inside an array/map.
+  This made enricher composition order-dependent: an enricher that failed to
+  resolve a name (for example `PhpStanEnricher` on a `use`-aliased type imported
+  from another namespace) could clobber the type a previous enricher had already
+  resolved. `UnknownType` is now treated as the bottom of the type lattice — it
+  never degrades a resolved type, and any concrete type may upgrade it — so
+  composing `PhpStanEnricher` with `PhpDocumentorEnricher` resolves such types
+  regardless of the order the enrichers run in.
+
 ## [2.0.0] - 2026-06-06
 
 ### Added
@@ -110,6 +124,7 @@ public function map(SerializedProjection $projection): JsonSchemaInterface
   constraints, serialization projection), with nested objects, enums, unions,
   circular references, and Draft-7 / Draft 2020-12 output.
 
+[2.0.1]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/2.0.1
 [2.0.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/2.0.0
 [1.3.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/1.3.0
 [1.2.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/1.2.0
