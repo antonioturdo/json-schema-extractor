@@ -2,7 +2,6 @@
 
 namespace Zeusi\JsonSchemaExtractor\Mapper;
 
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchemaInterface;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedProjection;
 
 /**
@@ -10,5 +9,5 @@ use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedProjection;
  */
 interface JsonSchemaMapperInterface
 {
-    public function map(SerializedProjection $projection): JsonSchemaInterface;
+    public function map(SerializedProjection $projection): MappingResult;
 }

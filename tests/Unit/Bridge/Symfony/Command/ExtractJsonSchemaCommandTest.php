@@ -8,6 +8,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\DependencyInjection\ServiceLocator;
 use Zeusi\JsonSchemaExtractor\Bridge\Symfony\Command\ExtractJsonSchemaCommand;
+use Zeusi\JsonSchemaExtractor\ExtractionResult;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\BasicObject;
 
@@ -25,12 +26,12 @@ final class ExtractJsonSchemaCommandTest extends TestCase
             ->expects(self::once())
             ->method('extract')
             ->with(BasicObject::class)
-            ->willReturn([
+            ->willReturn(new ExtractionResult([
                 'type' => 'object',
                 'properties' => [
                     'name' => ['type' => 'string'],
                 ],
-            ]);
+            ], []));
 
         $tester = new CommandTester(new ExtractJsonSchemaCommand(new ServiceLocator([
             'default' => static fn(): SchemaExtractor => $defaultExtractor,
@@ -52,12 +53,12 @@ final class ExtractJsonSchemaCommandTest extends TestCase
             ->expects(self::once())
             ->method('extract')
             ->with(BasicObject::class)
-            ->willReturn([
+            ->willReturn(new ExtractionResult([
                 'type' => 'object',
                 'properties' => [
                     'id' => ['type' => 'integer'],
                 ],
-            ]);
+            ], []));
 
         $tester = new CommandTester(new ExtractJsonSchemaCommand(new ServiceLocator([
             'app' => static fn(): SchemaExtractor => $extractor,

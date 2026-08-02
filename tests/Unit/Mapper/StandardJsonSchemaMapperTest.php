@@ -8,7 +8,7 @@ use Zeusi\JsonSchemaExtractor\Mapper\ClassReferenceStrategy;
 use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaDialect;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapperOptions;
-use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchema;
+use Zeusi\JsonSchemaExtractor\Model\JsonSchema\JsonSchemaInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\FieldDefinitionInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineFieldDefinition;
@@ -299,7 +299,7 @@ final class StandardJsonSchemaMapperTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private static function serializeSchema(JsonSchema $schema): array
+    private static function serializeSchema(JsonSchemaInterface $schema): array
     {
         $serialized = $schema->jsonSerialize();
         self::assertIsArray($serialized);
@@ -324,7 +324,7 @@ final class StandardJsonSchemaMapperTest extends TestCase
         $rootId = new ViewId(self::objectName($root->type) ?? 'Root');
         $views[$rootId->key()] = $root;
 
-        return self::serializeSchema($mapper->map(new SerializedProjection($rootId, $views)));
+        return self::serializeSchema($mapper->map(new SerializedProjection($rootId, $views))->schema);
     }
 
     private static function objectName(Type $type): ?string

@@ -47,7 +47,7 @@ final class JsonSchemaDraft7ComplianceTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract($className);
+        $schema = $extractor->extract($className)->schema;
         $schemaDocument = self::toJsonObject($schema);
 
         $validation = (new CompliantValidator())->validate($schemaDocument, self::draft7MetaSchema());

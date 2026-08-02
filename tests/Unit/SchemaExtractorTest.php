@@ -3,6 +3,7 @@
 namespace Zeusi\JsonSchemaExtractor\Tests\Unit;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
@@ -13,6 +14,7 @@ use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpDocumentorEnricher;
 use Zeusi\JsonSchemaExtractor\Enricher\PhpStanEnricher;
 use Zeusi\JsonSchemaExtractor\Mapper\ClassReferenceStrategy;
+use Zeusi\JsonSchemaExtractor\Mapper\JsonSchemaDialect;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapper;
 use Zeusi\JsonSchemaExtractor\Mapper\StandardJsonSchemaMapperOptions;
 use Zeusi\JsonSchemaExtractor\SchemaExtractor;
@@ -27,6 +29,7 @@ use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ComplexDiscriminatorContainer;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorAnimal;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorCat;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\PhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\StatusEnum;
 
 #[CoversClass(SchemaExtractor::class)]
 #[CoversClass(StandardJsonSchemaMapper::class)]
@@ -44,7 +47,7 @@ class SchemaExtractorTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(BasicObject::class);
+        $schema = $extractor->extract(BasicObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -63,7 +66,7 @@ class SchemaExtractorTest extends TestCase
             new StandardJsonSchemaMapper(),
         );
 
-        $schema = $extractor->extract(AdditionalPropertiesObject::class);
+        $schema = $extractor->extract(AdditionalPropertiesObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -83,7 +86,7 @@ class SchemaExtractorTest extends TestCase
             new SchemaExtractorOptions(defaultAdditionalProperties: true)
         );
 
-        $schema = $extractor->extract(BasicObject::class);
+        $schema = $extractor->extract(BasicObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -102,7 +105,7 @@ class SchemaExtractorTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(PhpDocObject::class);
+        $schema = $extractor->extract(PhpDocObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -125,7 +128,7 @@ class SchemaExtractorTest extends TestCase
             ))
         );
 
-        $schema = $extractor->extract(PhpDocObject::class);
+        $schema = $extractor->extract(PhpDocObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -136,6 +139,74 @@ class SchemaExtractorTest extends TestCase
         self::assertSame('#/definitions/StatusEnum', $schema['properties']['mixedTags']['items']['anyOf'][0]['$ref']);
         self::assertSame('object', $schema['properties']['favoritePerformance']['type']);
         self::assertArrayNotHasKey('$ref', $schema['properties']['favoritePerformance']);
+    }
+
+    /**
+     * @return iterable<string, array{JsonSchemaDialect, string, string}>
+     */
+    public static function definitionsDialectProvider(): iterable
+    {
+        yield 'draft-7' => [JsonSchemaDialect::Draft7, '#/definitions/', 'definitions'];
+        yield 'draft-2020-12' => [JsonSchemaDialect::Draft202012, '#/$defs/', '$defs'];
+    }
+
+    /**
+     * Reported pointers must be keyed exactly as the configured dialect emits them.
+     *
+     * The `$ref => FQCN` map is what lets a consumer relocate referenced schemas
+     * (e.g. into an AsyncAPI `components/schemas`) and rewrite the pointers, so the
+     * keys have to match the document verbatim.
+     *
+     * @throws \ReflectionException
+     */
+    #[DataProvider('definitionsDialectProvider')]
+    public function testExtractReportsEachEmittedReferenceWithTheClassItDenotes(
+        JsonSchemaDialect $dialect,
+        string $refPrefix,
+        string $definitionsKeyword
+    ): void {
+        $extractor = new SchemaExtractor(
+            new ReflectionDiscoverer(),
+            [new PhpStanEnricher()],
+            new JsonEncodeSerializationStrategy(),
+            new StandardJsonSchemaMapper(new StandardJsonSchemaMapperOptions(
+                dialect: $dialect,
+                classReferenceStrategy: ClassReferenceStrategy::Definitions
+            ))
+        );
+
+        $result = $extractor->extract(PhpDocObject::class);
+
+        self::assertSame(BasicObject::class, $result->refs[$refPrefix . 'BasicObject'] ?? null);
+        self::assertSame(StatusEnum::class, $result->refs[$refPrefix . 'StatusEnum'] ?? null);
+
+        // Every reported pointer must actually resolve inside the emitted document,
+        // and inlined shapes carry no pointer at all.
+        $schema = $result->schema;
+        self::assertIsArray($schema);
+        /** @var array<string, mixed> $schema */
+        $definitions = $schema[$definitionsKeyword];
+
+        foreach (array_keys($result->refs) as $ref) {
+            self::assertArrayHasKey(str_replace($refPrefix, '', $ref), $definitions);
+        }
+    }
+
+    /**
+     * @throws \ReflectionException
+     */
+    public function testExtractReportsNoReferencesWhenEverythingIsInlined(): void
+    {
+        $extractor = new SchemaExtractor(
+            new ReflectionDiscoverer(),
+            [new PhpStanEnricher()],
+            new JsonEncodeSerializationStrategy(),
+            new StandardJsonSchemaMapper(new StandardJsonSchemaMapperOptions(
+                classReferenceStrategy: ClassReferenceStrategy::Inline
+            ))
+        );
+
+        self::assertSame([], $extractor->extract(BasicObject::class)->refs);
     }
 
     /**
@@ -155,7 +226,7 @@ class SchemaExtractorTest extends TestCase
 
         $context = (new ExtractionContext())->with(new SymfonySerializerContext());
 
-        $schema = $extractor->extract(DiscriminatorAnimal::class, $context);
+        $schema = $extractor->extract(DiscriminatorAnimal::class, $context)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -189,7 +260,7 @@ class SchemaExtractorTest extends TestCase
 
         $context = (new ExtractionContext())->with(new SymfonySerializerContext());
 
-        $schema = $extractor->extract(ComplexDiscriminatorContainer::class, $context);
+        $schema = $extractor->extract(ComplexDiscriminatorContainer::class, $context)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -225,7 +296,7 @@ class SchemaExtractorTest extends TestCase
 
         $context = (new ExtractionContext())->with(new SymfonySerializerContext());
 
-        $schema = $extractor->extract(DiscriminatorCat::class, $context);
+        $schema = $extractor->extract(DiscriminatorCat::class, $context)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -245,7 +316,7 @@ class SchemaExtractorTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(BasicObject::class);
+        $schema = $extractor->extract(BasicObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -270,7 +341,7 @@ class SchemaExtractorTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(BasicObject::class);
+        $schema = $extractor->extract(BasicObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -292,7 +363,7 @@ class SchemaExtractorTest extends TestCase
             )
         );
 
-        $schema = $extractor->extract(CircularObject::class);
+        $schema = $extractor->extract(CircularObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -320,7 +391,7 @@ class SchemaExtractorTest extends TestCase
             AbstractNormalizer::ATTRIBUTES => ['company' => ['name']],
         ]));
 
-        $schema = $extractor->extract(AttributesRoot::class, $context);
+        $schema = $extractor->extract(AttributesRoot::class, $context)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -360,7 +431,7 @@ class SchemaExtractorTest extends TestCase
             AbstractNormalizer::ATTRIBUTES => ['company' => []],
         ]));
 
-        $schema = $extractor->extract(AttributesRoot::class, $context);
+        $schema = $extractor->extract(AttributesRoot::class, $context)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 

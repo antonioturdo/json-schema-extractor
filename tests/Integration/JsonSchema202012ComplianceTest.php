@@ -66,7 +66,7 @@ final class JsonSchema202012ComplianceTest extends TestCase
             ))
         );
 
-        return self::toJsonObject($extractor->extract(PhpDocObject::class));
+        return self::toJsonObject($extractor->extract(PhpDocObject::class)->schema);
     }
 
     /**

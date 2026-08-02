@@ -434,9 +434,11 @@ final class TypeUtils
     }
 
     /**
-     * True when `$next` is strictly less specific than `$current`, i.e. it would
-     * replace a resolved item with an `UnknownType`. Used to keep container
-     * replacements (array/map) from degrading an already-resolved element type.
+     * True when `$next` is strictly less specific than `$current`.
+     *
+     * That is, when it would replace a resolved item with an `UnknownType`. Used to
+     * keep container replacements (array/map) from degrading an already-resolved
+     * element type.
      */
     private static function isLessSpecificItem(Type $current, Type $next): bool
     {
