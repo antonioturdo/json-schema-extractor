@@ -20,8 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of the schema itself. Read `->schema` for the previous value.
 - **BREAKING** — `JsonSchemaMapperInterface::map()` returns a `MappingResult`
   (schema plus emitted reference pointers) instead of a `JsonSchemaInterface`.
-  This affects **only custom mapper implementations**.
 
+> The return type of `extract()` affects **every caller**, although the change is
+> mechanical: read `->schema` where the schema was used before. The `map()` change
+> affects **only custom mapper implementations**; the built-in components
+> (`StandardJsonSchemaMapper`, the serialization strategies) need no migration.
+>
 > See [docs/upgrade/3.0.md](docs/upgrade/3.0.md) for the migration steps.
 
 ## [2.0.1] - 2026-07-31
