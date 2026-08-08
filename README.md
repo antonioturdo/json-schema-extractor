@@ -77,7 +77,7 @@ $extractor = new SchemaExtractor(
     new StandardJsonSchemaMapper(),
 );
 
-$schema = $extractor->extract(UserProfile::class);
+$schema = $extractor->extract(UserProfile::class)->schema;
 
 echo json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 ```
@@ -121,6 +121,19 @@ The resulting schema includes native PHP types from reflection and PHPDoc inform
   "additionalProperties": false
 }
 ```
+
+### Extraction result
+
+`extract()` returns an [`ExtractionResult`](src/ExtractionResult.php): the schema itself, plus metadata about how it was built.
+
+```php
+$result = $extractor->extract(Order::class);
+
+$schema = $result->schema; // the JSON Schema document
+$refs = $result->refs;     // ['#/definitions/Customer' => 'App\Model\Customer', ...]
+```
+
+`refs` maps every reference pointer emitted in the document to the class it denotes, keyed exactly as it appears in the schema (`#/definitions/...` on Draft-7, `#/$defs/...` on Draft 2020-12). This is what lets a consumer relocate referenced schemas and rewrite their pointers, for example moving them into an AsyncAPI `components/schemas` block. Inlined shapes carry no pointer and are therefore absent.
 
 For executable examples, see `bin/schema.php`.
 

@@ -36,7 +36,7 @@ $context = (new ExtractionContext())->with(new SymfonySerializerContext([
     AbstractNormalizer::GROUPS => ['read'],
 ]));
 
-$schema = $extractor->extract(Event::class, $context);
+$schema = $extractor->extract(Event::class, $context)->schema;
 ```
 
 The context should mirror the normalization context used by your Symfony Serializer at runtime. The strategy does not run the serializer, but it uses the same context keys where they affect the serialized shape.

@@ -58,6 +58,12 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
      */
     private array $inliningViews = [];
 
+    /**
+     * Reference pointers emitted during the pass => the class each one denotes.
+     * @var array<string, class-string>
+     */
+    private array $refs = [];
+
     /** Class name of the root view; lets a self-reference emit "#". Null when the root is not an object. */
     private ?string $rootClassName = null;
 
@@ -75,7 +81,7 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
      * @throws \LogicException
      * @throws \ReflectionException
      */
-    public function map(SerializedProjection $projection): JsonSchema
+    public function map(SerializedProjection $projection): MappingResult
     {
         $this->projection = $projection;
         $rootPayload = $projection->rootPayload();
@@ -84,6 +90,7 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         $this->definitions = [];
         $this->definitionNamesByClass = [];
         $this->buildingDefinitions = [];
+        $this->refs = [];
         $this->rootClassName = $this->extractRootObjectDefinition($rootPayload->type)?->name;
         $this->rootViewKey = $projection->root()->viewKey;
         $this->inliningViews = $this->rootClassName !== null
@@ -100,7 +107,7 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
         // promoted to break a non-root cycle in inline mode (no-op when there are none).
         $this->applyDefinitions($schema);
 
-        return $schema;
+        return new MappingResult($schema, $this->refs);
     }
 
     /** Finds the object shape at the root of a payload type (unwrapping decoration); null if the root is not an object. */
@@ -480,7 +487,13 @@ class StandardJsonSchemaMapper implements JsonSchemaMapperInterface
      */
     private function definitionRef(string $className): string
     {
-        return $this->options->dialect->definitionsRefPrefix() . $this->definitionName($className);
+        $ref = $this->options->dialect->definitionsRefPrefix() . $this->definitionName($className);
+
+        // Single chokepoint for every emitted pointer, so the collected map always
+        // matches what actually ends up in the document.
+        $this->refs[$ref] = $className;
+
+        return $ref;
     }
 
     /**

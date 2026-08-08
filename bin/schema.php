@@ -61,7 +61,7 @@ foreach ($classes as $class) {
         $context = (new ExtractionContext())
             ->with(new SymfonySerializerContext());
 
-        $schema = $extractor->extract($class, $context);
+        $schema = $extractor->extract($class, $context)->schema;
         echo json_encode($schema, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
     } catch (Throwable $e) {
         echo "\e[1;31mERRORE: {$e->getMessage()}\e[0m\n";

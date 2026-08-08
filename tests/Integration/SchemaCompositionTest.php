@@ -69,7 +69,7 @@ class SchemaCompositionTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(CollectionValidatedObject::class);
+        $schema = $extractor->extract(CollectionValidatedObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -100,7 +100,7 @@ class SchemaCompositionTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(ConflictingCollectionValidatedObject::class);
+        $schema = $extractor->extract(ConflictingCollectionValidatedObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -120,7 +120,7 @@ class SchemaCompositionTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(JsonSerializablePhpDocObject::class);
+        $schema = $extractor->extract(JsonSerializablePhpDocObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -140,7 +140,7 @@ class SchemaCompositionTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(JsonSerializablePhpDocObject::class);
+        $schema = $extractor->extract(JsonSerializablePhpDocObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -160,7 +160,7 @@ class SchemaCompositionTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract(JsonSerializableClassUnionPhpDocObject::class);
+        $schema = $extractor->extract(JsonSerializableClassUnionPhpDocObject::class)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 
@@ -184,7 +184,7 @@ class SchemaCompositionTest extends TestCase
             new StandardJsonSchemaMapper()
         );
 
-        $schema = $extractor->extract($className);
+        $schema = $extractor->extract($className)->schema;
         self::assertIsArray($schema);
         /** @var array<string, mixed> $schema */
 

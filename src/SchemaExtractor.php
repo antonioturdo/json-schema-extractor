@@ -51,12 +51,11 @@ class SchemaExtractor
      * Extracts a JSON Schema structure for the given class.
      *
      * @param class-string $className
-     * @return array<string, mixed>|object
      *
      * @throws \LogicException
      * @throws \ReflectionException
      */
-    public function extract(string $className, ?ExtractionContext $context = null): array|object
+    public function extract(string $className, ?ExtractionContext $context = null): ExtractionResult
     {
         $context ??= new ExtractionContext();
 
@@ -67,8 +66,9 @@ class SchemaExtractor
 
         // ...then map the finished projection to JSON Schema.
         $projection = new SerializedProjection(new ViewId($className, $rootState->viewKey()), $views);
-        $schema = $this->mapper->map($projection);
-        return $schema->jsonSerialize();
+        $mapping = $this->mapper->map($projection);
+
+        return new ExtractionResult($mapping->schema->jsonSerialize(), $mapping->refs);
     }
 
     /**

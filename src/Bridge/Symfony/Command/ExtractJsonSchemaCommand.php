@@ -60,7 +60,7 @@ final class ExtractJsonSchemaCommand extends Command
             $flags |= JSON_PRETTY_PRINT;
         }
 
-        $output->writeln(json_encode($extractor->extract($className), $flags));
+        $output->writeln(json_encode($extractor->extract($className)->schema, $flags));
 
         return Command::SUCCESS;
     }
