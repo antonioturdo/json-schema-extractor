@@ -2,6 +2,9 @@
 
 namespace Zeusi\JsonSchemaExtractor\Serialization;
 
+use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
+use Symfony\Component\PropertyInfo\PropertyReadInfo;
+use Symfony\Component\PropertyInfo\PropertyReadInfoExtractorInterface;
 use Symfony\Component\Serializer\Encoder\JsonEncode;
 use Symfony\Component\Serializer\Mapping\AttributeMetadataInterface;
 use Symfony\Component\Serializer\Mapping\ClassDiscriminatorMapping;
@@ -53,10 +56,33 @@ use Zeusi\JsonSchemaExtractor\Serialization\State\SymfonyProjectionState;
  */
 class SymfonySerializerStrategy implements SerializationStrategyInterface
 {
+    /**
+     * Null only when PropertyInfo is not installed, see the constructor.
+     */
+    private readonly ?PropertyReadInfoExtractorInterface $readInfoExtractor;
+
+    /**
+     * @param PropertyReadInfoExtractorInterface|null $readInfoExtractor Decides which attributes
+     *        Symfony Serializer can read. Defaults to PropertyInfo's ReflectionExtractor, as in
+     *        Symfony's ObjectNormalizer.
+     *
+     * @todo 4.0: require symfony/property-info and drop the fallback for when it is missing.
+     */
     public function __construct(
         private readonly ClassMetadataFactoryInterface $classMetadataFactory,
-        private readonly ?NameConverterInterface $nameConverter = null
-    ) {}
+        private readonly ?NameConverterInterface $nameConverter = null,
+        ?PropertyReadInfoExtractorInterface $readInfoExtractor = null,
+    ) {
+        if ($readInfoExtractor === null && !class_exists(ReflectionExtractor::class)) {
+            trigger_deprecation(
+                'zeusi/json-schema-extractor',
+                '3.1',
+                'Using SymfonySerializerStrategy without the PropertyInfo component is deprecated and will not be supported in 4.0: the schema keeps describing properties Symfony Serializer cannot read and misses attributes exposed only through getters. Run "composer require symfony/property-info".'
+            );
+        }
+
+        $this->readInfoExtractor = $readInfoExtractor ?? (class_exists(ReflectionExtractor::class) ? new ReflectionExtractor() : null);
+    }
 
     public function initialState(ExtractionContext $context): ProjectionState
     {
@@ -124,9 +150,23 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
             }
         }
 
+        // Candidates are the attributes Symfony knows: discovered properties first, keeping
+        // their order, then attributes that exist only through an accessor method.
+        $attributeNames = array_keys($definition->getProperties());
+        foreach (array_keys($attributesMetadata) as $attributeName) {
+            if (!\in_array($attributeName, $attributeNames, true)) {
+                $attributeNames[] = $attributeName;
+            }
+        }
+
         $properties = [];
-        foreach ($definition->getProperties() as $propertyName => $propertyDefinition) {
+        foreach ($attributeNames as $propertyName) {
             if (\in_array($propertyName, $ignoredAttributes, true)) {
+                continue;
+            }
+
+            $field = $this->resolveReadableField($definition, $propertyName);
+            if ($field === null) {
                 continue;
             }
 
@@ -172,7 +212,7 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
             }
 
             $childState = $childAttributesView === null ? null : new SymfonyProjectionState($childAttributesView);
-            $projectedType = $this->projectType($propertyDefinition->getType(), $propertyContext, $childState);
+            $projectedType = $this->projectType($field['type'], $propertyContext, $childState);
 
             if ($newName === null && $this->nameConverter !== null && !$isDiscriminatorProperty) {
                 if (interface_exists(AdvancedNameConverterInterface::class) && $this->nameConverter instanceof AdvancedNameConverterInterface) {
@@ -182,7 +222,7 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
                 }
             }
 
-            $required = $propertyDefinition->isRequired();
+            $required = $field['required'];
             if ($this->shouldSkipNullValues($propertyContext) && $projectedType !== null && TypeUtils::allowsNull($projectedType)) {
                 $required = false;
             }
@@ -218,6 +258,42 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
             // An ATTRIBUTES-narrowed view is a bespoke, one-off shape → inline-only.
             inlineOnly: $attributesState !== null,
         );
+    }
+
+    /**
+     * Resolves the type and requiredness of an attribute Symfony Serializer can read.
+     *
+     * Readability follows PropertyInfo, which the object normalizer relies on. A discovered
+     * property keeps its own metadata even when Symfony reads it through a getter; an
+     * attribute without a property takes its type from the accessor method. Null means
+     * Symfony cannot read the attribute, or reads it through a member the discoverer did
+     * not record, such as a static getter, which the object normalizer never calls.
+     *
+     * @return array{type: ?Type, required: bool}|null
+     */
+    private function resolveReadableField(ClassDefinition $definition, string $attributeName): ?array
+    {
+        if ($this->readInfoExtractor === null) {
+            // Deprecated fallback: describe every discovered property, as before PropertyInfo was used.
+            $property = $definition->getProperty($attributeName);
+
+            return $property === null ? null : ['type' => $property->getType(), 'required' => $property->isRequired()];
+        }
+
+        $readInfo = $this->readInfoExtractor->getReadInfo($definition->getClassName(), $attributeName);
+        if ($readInfo === null) {
+            return null;
+        }
+
+        $property = $definition->getProperty($attributeName);
+        if ($property !== null) {
+            return $property->isReadable() ? ['type' => $property->getType(), 'required' => $property->isRequired()] : null;
+        }
+
+        $method = $readInfo->getType() === PropertyReadInfo::TYPE_METHOD ? $definition->getMethod($readInfo->getName()) : null;
+
+        // A getter is called on every normalization, so its value is always present.
+        return $method === null ? null : ['type' => $method->getReturnType(), 'required' => true];
     }
 
     private function createDiscriminatorProperty(string $propertyName, string $mappedType): SerializedPropertyDefinition

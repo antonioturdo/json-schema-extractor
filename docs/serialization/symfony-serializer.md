@@ -5,6 +5,7 @@
 ## Dependencies
 
 - `symfony/serializer`
+- `symfony/property-info`, to resolve which properties and getters Symfony Serializer can read. Without it the strategy triggers a deprecation and describes every discovered property instead; it will be required in 4.0. Any application that uses `ObjectNormalizer` already has it installed.
 
 Some known-normalizer mappings also depend on the Symfony package that defines the normalized type:
 
@@ -222,12 +223,17 @@ This keeps custom behavior explicit while still reusing Symfony metadata support
 ## What it reads
 
 - Symfony serializer class/property metadata.
+- PropertyInfo read information, to know whether Symfony reads an attribute through a property or a getter.
 - Optional `SymfonySerializerContext` (e.g. groups, ignored attributes, skip-null policy).
 - `JsonSerializable::jsonSerialize()` return metadata when available.
 - Known normalizer/discriminator behaviors.
 
 ## Projection behavior
 
+- Describes the attributes `ObjectNormalizer` emits, the object normalizer of a standard Symfony setup:
+  - public properties;
+  - `protected` and `private` properties only when they have an accessor (`get*`, `is*`, `has*`, `can*`);
+  - attributes that exist only through a getter, such as `getInitials()` exposed as `initials`, typed from the getter's return type and PHPDoc.
 - Map property names, taking into account the `SerializedName` attribute and name converters.
 - Excludes properties based on ignored attributes, the `Ignore` attribute, and serialization groups.
 - Rewrites types for known normalized values (date/time, UID, etc.).
@@ -256,6 +262,7 @@ This keeps custom behavior explicit while still reusing Symfony metadata support
 
 ## Limitations
 
+- The object normalizer is assumed to be `ObjectNormalizer`. Applications that serialize objects with another normalizer, for instance `PropertyNormalizer` registered with a higher priority, produce a different payload: `PropertyNormalizer` exposes every property and no getter-only attribute. The serializer's normalizer chain cannot be inspected, so model such setups with a custom serialization strategy.
 - Runtime-dependent serializer customizations outside known mappings are not handled automatically.
 - Runtime state-dependent options are not modeled automatically:
   - `AbstractObjectNormalizer::PRESERVE_EMPTY_OBJECTS` can preserve empty object-like values as JSON objects, but it does not prove that the same property cannot serialize as an array or dictionary when populated.

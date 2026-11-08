@@ -6,17 +6,28 @@ use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\FieldDefinitionInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
 use Zeusi\JsonSchemaExtractor\Model\Type\EnumType;
 use Zeusi\JsonSchemaExtractor\Model\Type\InlineObjectType;
+use Zeusi\JsonSchemaExtractor\Model\Type\SerializedObjectType;
 use Zeusi\JsonSchemaExtractor\Model\Type\Type;
 use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 
 trait TypeTestHelperTrait
 {
+    protected function requireRootObject(SerializedPayloadDefinition $payload): SerializedObjectDefinition
+    {
+        $type = $this->unwrapDecorated($payload->type);
+        self::assertInstanceOf(SerializedObjectType::class, $type);
+
+        return $type->shape;
+    }
+
     protected function requirePropertyDefinition(ClassDefinition $definition, string $propertyName): PropertyDefinition
     {
         $property = $definition->getProperty($propertyName);

@@ -21,7 +21,6 @@ use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
-use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
@@ -42,6 +41,7 @@ use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AttributesRoot;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CustomNormalizedObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorCat;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\LedgerEntry;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SerializerObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SymfonySerializer\CustomSerializationStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SymfonySerializer\NumberNormalizerStub;
@@ -152,7 +152,7 @@ class SymfonySerializerStrategyTest extends TestCase
             class_alias(NumberNormalizerStub::class, 'Symfony\Component\Serializer\Normalizer\NumberNormalizer');
         }
 
-        $definition = new ClassDefinition(className: SerializerObject::class);
+        $definition = new ClassDefinition(className: LedgerEntry::class);
         $amount = new PropertyDefinition('amount');
         $amount->setType(new ClassLikeType('GMP'));
         $definition->addProperty($amount);
@@ -446,11 +446,4 @@ class SymfonySerializerStrategyTest extends TestCase
         return $property;
     }
 
-    private function requireRootObject(SerializedPayloadDefinition $payload): SerializedObjectDefinition
-    {
-        $type = $this->unwrapDecorated($payload->type);
-        self::assertInstanceOf(SerializedObjectType::class, $type);
-
-        return $type->shape;
-    }
 }

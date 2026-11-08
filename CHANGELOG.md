@@ -14,12 +14,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`isReadable()`, false for PHP 8.4 virtual properties without a `get` hook).
   `ReflectionDiscoverer` fills both. Custom discoverers should pass them too: the
   defaults (`Public`, readable) keep the previous behavior.
+- `ReflectionDiscoverer` now records every public method that can be read like a
+  value (an instance method with no required arguments that returns something), not
+  only `jsonSerialize()`. Enrichers type their return values as before, and
+  `ClassDefinition::getMethods()` returns these methods too.
 
 ### Fixed
 
 - `JsonEncodeSerializationStrategy` described `protected` and `private` properties,
   and PHP 8.4 virtual properties without a `get` hook, although `json_encode()`
   never emits them. They are now omitted from the schema.
+- `SymfonySerializerStrategy` did not match `ObjectNormalizer`, the object
+  normalizer of a standard Symfony setup. It described non-public properties without
+  an accessor, which Symfony never emits, and missed attributes exposed only through
+  a getter, so real payloads failed validation against the schema. Readable
+  attributes are now resolved through PropertyInfo, as `ObjectNormalizer` does.
+
+### Deprecated
+
+- Using `SymfonySerializerStrategy` without `symfony/property-info` is deprecated.
+  The strategy falls back to the previous behavior and triggers a deprecation; the
+  component will be required in 4.0.
 
 ## [3.0.0] - 2026-08-08
 
