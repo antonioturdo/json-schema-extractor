@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-11-08
+
+### Added
+
+- `PropertyDefinition` now records who can read a property (`getReadVisibility()`,
+  returning the new `PropertyVisibility` enum) and whether it holds a readable value
+  (`isReadable()`, false for PHP 8.4 virtual properties without a `get` hook).
+  `ReflectionDiscoverer` fills both. Custom discoverers should pass them too: the
+  defaults (`Public`, readable) keep the previous behavior.
+
+### Fixed
+
+- `JsonEncodeSerializationStrategy` described `protected` and `private` properties,
+  and PHP 8.4 virtual properties without a `get` hook, although `json_encode()`
+  never emits them. They are now omitted from the schema.
+
 ## [3.0.0] - 2026-08-08
 
 ### Added
@@ -147,6 +163,7 @@ public function map(SerializedProjection $projection): JsonSchemaInterface
   constraints, serialization projection), with nested objects, enums, unions,
   circular references, and Draft-7 / Draft 2020-12 output.
 
+[3.1.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/3.1.0
 [3.0.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/3.0.0
 [2.0.1]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/2.0.1
 [2.0.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/2.0.0

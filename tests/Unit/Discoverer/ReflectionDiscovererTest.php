@@ -4,12 +4,16 @@ namespace Zeusi\JsonSchemaExtractor\Tests\Unit\Discoverer;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RequiresPhp;
 use PHPUnit\Framework\TestCase;
 use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
+use Zeusi\JsonSchemaExtractor\Model\Php\PropertyVisibility;
 use Zeusi\JsonSchemaExtractor\Model\Type\IntersectionType;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\PropertyHooksObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ReflectionObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ReflectionParentObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\StatusEnum;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\UserAccount;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
 
 #[CoversClass(ReflectionDiscoverer::class)]
@@ -22,6 +26,31 @@ class ReflectionDiscovererTest extends TestCase
     protected function setUp(): void
     {
         $this->discoverer = new ReflectionDiscoverer();
+    }
+
+    /**
+     * Virtual properties are discovered, with their readability recorded.
+     *
+     * A virtual property with only a `set` hook holds no value, so it is not readable;
+     * one with a `get` hook is. Deciding what to serialize is left to the strategy.
+     */
+    #[RequiresPhp('>=8.4')]
+    public function testDiscoverRecordsWhetherVirtualPropertiesAreReadable(): void
+    {
+        $definition = $this->discoverer->discover(PropertyHooksObject::class);
+
+        self::assertTrue($this->requirePropertyDefinition($definition, 'firstName')->isReadable());
+        self::assertTrue($this->requirePropertyDefinition($definition, 'fullName')->isReadable());
+        self::assertFalse($this->requirePropertyDefinition($definition, 'nickname')->isReadable());
+    }
+
+    public function testDiscoverRecordsReadVisibility(): void
+    {
+        $definition = $this->discoverer->discover(UserAccount::class);
+
+        self::assertSame(PropertyVisibility::Public, $this->requirePropertyDefinition($definition, 'username')->getReadVisibility());
+        self::assertSame(PropertyVisibility::Protected, $this->requirePropertyDefinition($definition, 'role')->getReadVisibility());
+        self::assertSame(PropertyVisibility::Private, $this->requirePropertyDefinition($definition, 'passwordHash')->getReadVisibility());
     }
 
     public function testDiscoverBuildsClassDefinitionFromNativeReflectionMetadata(): void

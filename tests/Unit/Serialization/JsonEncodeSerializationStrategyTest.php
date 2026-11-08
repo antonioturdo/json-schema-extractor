@@ -11,6 +11,7 @@ use Zeusi\JsonSchemaExtractor\Model\Php\InlineFieldDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\PropertyVisibility;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
@@ -34,6 +35,24 @@ use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
 final class JsonEncodeSerializationStrategyTest extends TestCase
 {
     use TypeTestHelperTrait;
+
+    /**
+     * Only public, readable properties are projected, as `json_encode()` emits nothing else.
+     */
+    public function testProjectKeepsOnlyPublicReadableProperties(): void
+    {
+        $definition = new ClassDefinition('App\\UserAccount');
+        $definition->addProperty(new PropertyDefinition('username'));
+        $definition->addProperty(new PropertyDefinition('role', readVisibility: PropertyVisibility::Protected));
+        $definition->addProperty(new PropertyDefinition('passwordHash', readVisibility: PropertyVisibility::Private));
+        $definition->addProperty(new PropertyDefinition('nickname', readable: false));
+
+        $projected = $this->requireRootObject(
+            (new JsonEncodeSerializationStrategy())->project($definition, new ExtractionContext(), NeutralProjectionState::instance())
+        );
+
+        self::assertSame(['username'], array_keys($projected->properties));
+    }
 
     public function testProjectCopiesClassMetadataAndProjectsKnownJsonEncodeShapes(): void
     {

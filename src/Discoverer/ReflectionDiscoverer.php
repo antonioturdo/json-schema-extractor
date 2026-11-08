@@ -5,6 +5,7 @@ namespace Zeusi\JsonSchemaExtractor\Discoverer;
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\PropertyVisibility;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
 use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
@@ -61,7 +62,11 @@ class ReflectionDiscoverer implements DiscovererInterface
             }
 
             $propertyName = $reflectionProperty->getName();
-            $propertyDefinition = new PropertyDefinition(propertyName: $propertyName);
+            $propertyDefinition = new PropertyDefinition(
+                propertyName: $propertyName,
+                readVisibility: $this->readVisibility($reflectionProperty),
+                readable: $this->isReadable($reflectionProperty),
+            );
 
             // Extract PHP 8 types directly using reflection
             $reflectionType = $reflectionProperty->getType();
@@ -108,6 +113,30 @@ class ReflectionDiscoverer implements DiscovererInterface
         }
 
         return $definition;
+    }
+
+    private function readVisibility(\ReflectionProperty $property): PropertyVisibility
+    {
+        return match (true) {
+            $property->isPublic() => PropertyVisibility::Public,
+            $property->isProtected() => PropertyVisibility::Protected,
+            default => PropertyVisibility::Private,
+        };
+    }
+
+    /**
+     * Tells whether the property holds a value that can be read.
+     *
+     * Only PHP 8.4 virtual properties without a `get` hook hold no value. Older runtimes
+     * have neither virtual properties nor the reflection methods to detect them.
+     */
+    private function isReadable(\ReflectionProperty $property): bool
+    {
+        if (!method_exists($property, 'isVirtual') || !method_exists($property, 'getHooks')) {
+            return true;
+        }
+
+        return !$property->isVirtual() || isset($property->getHooks()['get']);
     }
 
     /**
