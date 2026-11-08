@@ -9,7 +9,9 @@ use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
 use Symfony\Component\Serializer\Mapping\Loader\AttributeLoader;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\Normalizer\DateTimeNormalizer;
+use Symfony\Component\Serializer\Normalizer\ObjectNormalizer;
 use Symfony\Component\Serializer\Normalizer\UidNormalizer;
+use Symfony\Component\Serializer\Serializer;
 use Zeusi\JsonSchemaExtractor\Context\ExtractionContext;
 use Zeusi\JsonSchemaExtractor\Context\SymfonySerializerContext;
 use Zeusi\JsonSchemaExtractor\Discoverer\ReflectionDiscoverer;
@@ -21,7 +23,6 @@ use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
-use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
@@ -39,9 +40,11 @@ use Zeusi\JsonSchemaExtractor\Serialization\State\SymfonyProjectionState;
 use Zeusi\JsonSchemaExtractor\Serialization\SymfonySerializerStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AttributesCompany;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\AttributesRoot;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CustomerProfile;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CustomNormalizedObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\DiscriminatorCat;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\JsonSerializablePhpDocObject;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\LedgerEntry;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SerializerObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SymfonySerializer\CustomSerializationStrategy;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\SymfonySerializer\NumberNormalizerStub;
@@ -62,6 +65,29 @@ class SymfonySerializerStrategyTest extends TestCase
         $this->strategy = new SymfonySerializerStrategy(
             new ClassMetadataFactory(new AttributeLoader())
         );
+    }
+
+    /**
+     * The projected attributes are exactly those `ObjectNormalizer` emits.
+     *
+     * `ObjectNormalizer` is the object normalizer of a standard Symfony setup: it exposes
+     * public properties and accessor methods, and nothing else. Comparing with its real
+     * output keeps the projection in step with the installed Symfony version.
+     */
+    public function testProjectDescribesExactlyTheAttributesObjectNormalizerEmits(): void
+    {
+        $payload = (new Serializer([new ObjectNormalizer(new ClassMetadataFactory(new AttributeLoader()))]))->normalize(
+            new CustomerProfile('Ada Lovelace', 'ada@example.com', true, 'Prefers email contact')
+        );
+        self::assertIsArray($payload);
+
+        $projected = $this->requireRootObject($this->strategy->project(
+            $this->discoverer->discover(CustomerProfile::class),
+            new ExtractionContext(),
+            NeutralProjectionState::instance()
+        ));
+
+        self::assertEqualsCanonicalizing(array_keys($payload), array_keys($projected->properties));
     }
 
     public function testProjectAppliesSerializedNameWithoutGroupsFiltering(): void
@@ -152,7 +178,7 @@ class SymfonySerializerStrategyTest extends TestCase
             class_alias(NumberNormalizerStub::class, 'Symfony\Component\Serializer\Normalizer\NumberNormalizer');
         }
 
-        $definition = new ClassDefinition(className: SerializerObject::class);
+        $definition = new ClassDefinition(className: LedgerEntry::class);
         $amount = new PropertyDefinition('amount');
         $amount->setType(new ClassLikeType('GMP'));
         $definition->addProperty($amount);
@@ -446,11 +472,4 @@ class SymfonySerializerStrategyTest extends TestCase
         return $property;
     }
 
-    private function requireRootObject(SerializedPayloadDefinition $payload): SerializedObjectDefinition
-    {
-        $type = $this->unwrapDecorated($payload->type);
-        self::assertInstanceOf(SerializedObjectType::class, $type);
-
-        return $type->shape;
-    }
 }
