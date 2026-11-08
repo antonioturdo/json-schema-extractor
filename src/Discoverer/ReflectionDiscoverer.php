@@ -98,8 +98,11 @@ class ReflectionDiscoverer implements DiscovererInterface
             $definition->addProperty($propertyDefinition);
         }
 
-        if ($reflection->implementsInterface(\JsonSerializable::class) && $reflection->hasMethod('jsonSerialize')) {
-            $reflectionMethod = $reflection->getMethod('jsonSerialize');
+        foreach ($reflection->getMethods(\ReflectionMethod::IS_PUBLIC) as $reflectionMethod) {
+            if (!$this->isAccessorShaped($reflectionMethod)) {
+                continue;
+            }
+
             $methodDefinition = new MethodDefinition($reflectionMethod->getName());
             $returnType = $reflectionMethod->getReturnType();
             if ($returnType !== null) {
@@ -113,6 +116,24 @@ class ReflectionDiscoverer implements DiscovererInterface
         }
 
         return $definition;
+    }
+
+    /**
+     * Tells whether a public method can be read like a value.
+     *
+     * That is, an instance method callable without arguments that returns something.
+     * The check is deliberately serializer-neutral: which of these methods a serializer
+     * actually exposes, and under which name, is up to the serialization strategy.
+     */
+    private function isAccessorShaped(\ReflectionMethod $method): bool
+    {
+        if ($method->isStatic() || str_starts_with($method->getName(), '__') || $method->getNumberOfRequiredParameters() > 0) {
+            return false;
+        }
+
+        $returnType = $method->getReturnType();
+
+        return !$returnType instanceof \ReflectionNamedType || !\in_array($returnType->getName(), ['void', 'never'], true);
     }
 
     private function readVisibility(\ReflectionProperty $property): PropertyVisibility

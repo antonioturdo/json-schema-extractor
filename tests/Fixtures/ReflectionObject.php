@@ -40,6 +40,21 @@ class ReflectionObject extends ReflectionParentObject implements \JsonSerializab
         return [];
     }
 
+    public function label(string $prefix = ''): string
+    {
+        return $prefix . $this->regularDefault;
+    }
+
+    public function withPrefix(string $prefix): string
+    {
+        return $prefix . $this->regularDefault;
+    }
+
+    public function reset(): void
+    {
+        $this->regularDefault = 'default';
+    }
+
     public function jsonSerialize(): array
     {
         return [];

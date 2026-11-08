@@ -13,7 +13,6 @@ use Zeusi\JsonSchemaExtractor\Model\Php\MethodDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\PropertyVisibility;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
-use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
@@ -272,11 +271,4 @@ final class JsonEncodeSerializationStrategyTest extends TestCase
         return $property;
     }
 
-    private function requireRootObject(SerializedPayloadDefinition $payload): SerializedObjectDefinition
-    {
-        $type = $this->unwrapDecorated($payload->type);
-        self::assertInstanceOf(SerializedObjectType::class, $type);
-
-        return $type->shape;
-    }
 }
