@@ -36,6 +36,7 @@ This can be useful because JSON encoding flags can also affect the JSON Schema, 
 ## Projection behavior
 
 - Public properties are mapped without modification.
+- `protected` and `private` properties are omitted, as are PHP 8.4 virtual properties without a `get` hook, because `json_encode()` never emits them.
 - Maps `DateTimeInterface` to the object shape produced by PHP's native JSON serialization (`date`, `timezone_type`, `timezone`).
 - Uses the documented `jsonSerialize()` return type as the root payload for `JsonSerializable` classes.
 

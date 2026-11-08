@@ -20,6 +20,23 @@ class PropertyDefinition implements FieldDefinitionInterface
          * Whether the property must be present in the serialized output.
          */
         bool $required = false,
+
+        /**
+         * Who can read the property.
+         *
+         * Under PHP 8.4 asymmetric visibility, `public private(set)` is read as `Public`.
+         *
+         * @todo 4.0: make this argument required. Defaulting to `Public` treats a property
+         *       as exposed whenever a custom discoverer forgets to pass it.
+         */
+        private readonly PropertyVisibility $readVisibility = PropertyVisibility::Public,
+
+        /**
+         * Whether the property holds a value that can be read.
+         *
+         * False only for PHP 8.4 virtual properties without a `get` hook.
+         */
+        private readonly bool $readable = true,
     ) {
         $this->setRequired($required);
     }
@@ -27,5 +44,15 @@ class PropertyDefinition implements FieldDefinitionInterface
     public function getName(): string
     {
         return $this->propertyName;
+    }
+
+    public function getReadVisibility(): PropertyVisibility
+    {
+        return $this->readVisibility;
+    }
+
+    public function isReadable(): bool
+    {
+        return $this->readable;
     }
 }

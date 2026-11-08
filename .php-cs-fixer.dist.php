@@ -6,6 +6,11 @@ $finder = (new PhpCsFixer\Finder())
     ->exclude('vendor')
 ;
 
+// Fixtures using PHP 8.4 syntax cannot be linted by older runtimes.
+if (PHP_VERSION_ID < 80400) {
+    $finder->notPath('tests/Fixtures/PropertyHooksObject.php');
+}
+
 return (new PhpCsFixer\Config())
     ->setRules([
         '@PER-CS' => true,

@@ -5,6 +5,7 @@ namespace Zeusi\JsonSchemaExtractor\Tests\Support;
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\FieldDefinitionInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\PropertyDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
 use Zeusi\JsonSchemaExtractor\Model\Type\BuiltinType;
 use Zeusi\JsonSchemaExtractor\Model\Type\ClassLikeType;
@@ -16,6 +17,16 @@ use Zeusi\JsonSchemaExtractor\Model\Type\UnionType;
 
 trait TypeTestHelperTrait
 {
+    protected function requirePropertyDefinition(ClassDefinition $definition, string $propertyName): PropertyDefinition
+    {
+        $property = $definition->getProperty($propertyName);
+        if ($property === null) {
+            self::fail(\sprintf('Expected property "%s" to exist.', $propertyName));
+        }
+
+        return $property;
+    }
+
     protected function requireProperty(ClassDefinition|InlineObjectDefinition $shape, string $propertyName): FieldDefinitionInterface
     {
         $property = $shape->getProperty($propertyName);

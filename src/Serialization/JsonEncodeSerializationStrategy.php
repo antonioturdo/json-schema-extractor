@@ -7,6 +7,7 @@ use Zeusi\JsonSchemaExtractor\Context\JsonEncodeContext;
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Php\FieldDefinitionInterface;
 use Zeusi\JsonSchemaExtractor\Model\Php\InlineObjectDefinition;
+use Zeusi\JsonSchemaExtractor\Model\Php\PropertyVisibility;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedObjectDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPayloadDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Serialized\SerializedPropertyDefinition;
@@ -47,6 +48,11 @@ final class JsonEncodeSerializationStrategy implements SerializationStrategyInte
 
         $properties = [];
         foreach ($definition->getProperties() as $property) {
+            // json_encode() emits only the properties it can read from outside the object.
+            if ($property->getReadVisibility() !== PropertyVisibility::Public || !$property->isReadable()) {
+                continue;
+            }
+
             $serializedProperty = $this->projectFieldDefinition($property, $jsonEncodeContext);
             $properties[$serializedProperty->name] = $serializedProperty;
         }
