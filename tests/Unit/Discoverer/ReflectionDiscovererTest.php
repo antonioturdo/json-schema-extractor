@@ -90,9 +90,13 @@ class ReflectionDiscovererTest extends TestCase
         self::assertSame(['bool'], $this->collectTypeNames($this->requireProperty($definition, 'promotedDefault')->getType()));
         self::assertTrue($this->findFirstDecorated($this->requireProperty($definition, 'promotedDefault')->getType())?->annotations?->default);
 
-        self::assertArrayNotHasKey('payload', $definition->getMethods());
-        self::assertArrayNotHasKey('inheritedMethod', $definition->getMethods());
+        // Only methods readable like a value: no static, magic, void, or argument-requiring ones.
+        self::assertEqualsCanonicalizing(
+            ['payload', 'label', 'jsonSerialize', 'inheritedMethod'],
+            array_keys($definition->getMethods())
+        );
         self::assertSame(['array'], $this->collectTypeNames($definition->getMethod('jsonSerialize')?->getReturnType()));
+        self::assertSame(['string'], $this->collectTypeNames($definition->getMethod('label')?->getReturnType()));
     }
 
     /**
