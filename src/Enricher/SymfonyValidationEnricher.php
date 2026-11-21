@@ -207,8 +207,46 @@ class SymfonyValidationEnricher implements EnricherInterface
             $runtime->fieldDefinitionUpdater->applyItemCount($property, $constraint->min, $constraint->max);
             return;
         }
+        if ($constraint instanceof Constraints\Ulid && $this->isBase32Ulid($constraint)) {
+            $runtime->fieldDefinitionUpdater->applyPattern($property, '^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$');
+            return;
+        }
+        if ($constraint instanceof Constraints\Date) {
+            $runtime->fieldDefinitionUpdater->applyFormat($property, Format::Date->value);
+            return;
+        }
+        // Symfony's formats have no "T" separator nor time offset, both mandatory in the RFC 3339
+        // "date-time" and "time" formats, so a pattern is used instead; custom formats are skipped.
+        if ($constraint instanceof Constraints\DateTime && $constraint->format === 'Y-m-d H:i:s') {
+            $runtime->fieldDefinitionUpdater->applyPattern($property, '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$');
+            return;
+        }
+        if ($constraint instanceof Constraints\Time) {
+            $runtime->fieldDefinitionUpdater->applyPattern($property, $constraint->withSeconds ? '^\d{2}:\d{2}:\d{2}$' : '^\d{2}:\d{2}$');
+            return;
+        }
+        if ($constraint instanceof Constraints\IdenticalTo && $constraint->propertyPath === null && \is_scalar($constraint->value)) {
+            $runtime->fieldDefinitionUpdater->applyEnum($property, [$constraint->value]);
+            return;
+        }
+        // EqualTo compares loosely: it matches JSON Schema equality only for non-numeric strings.
+        if ($constraint instanceof Constraints\EqualTo && $constraint->propertyPath === null && \is_string($constraint->value) && !is_numeric($constraint->value)) {
+            $runtime->fieldDefinitionUpdater->applyEnum($property, [$constraint->value]);
+            return;
+        }
         if ($constraint instanceof Constraints\Choice && \is_array($constraint->choices)) {
             $runtime->fieldDefinitionUpdater->applyEnum($property, array_values($constraint->choices));
         }
+    }
+
+    /**
+     * Tells whether a ULID constraint expects the canonical base32 representation.
+     *
+     * The `format` option exists only in recent Symfony versions; before it, base32 was the
+     * only representation. Reading it through the object's properties works on both.
+     */
+    private function isBase32Ulid(Constraints\Ulid $constraint): bool
+    {
+        return (get_object_vars($constraint)['format'] ?? 'base32') === 'base32';
     }
 }

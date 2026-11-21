@@ -62,12 +62,22 @@ This means constraint/type incoherences are not silently fixed. For example, if 
 | `DivisibleBy`                                               | `multipleOf`                                                                                                 | Maps to JSON Schema divisibility rule.                           |
 | `Count`                                                     | `minItems`, `maxItems`                                                                                       | Applied as array item-count constraints.                         |
 | `Choice`                                                    | `enum`                                                                                                       | Supported choices become enum values.                            |
+| `Ulid`                                                      | `pattern`                                                                                                    | Base32 format (the default) only.                                |
+| `Date`                                                      | `format: date`                                                                                               | Both use `Y-m-d`.                                                |
+| `DateTime`                                                  | `pattern`                                                                                                    | Default `Y-m-d H:i:s` format only; custom formats are not mapped. |
+| `Time`                                                      | `pattern`                                                                                                    | `H:i:s`, or `H:i` with `withSeconds: false`.                     |
+| `IdenticalTo`                                               | `enum` with the single value                                                                                 | Scalar values without `propertyPath`.                            |
+| `EqualTo`                                                   | `enum` with the single value                                                                                 | Non-numeric strings without `propertyPath` only.                 |
 | `All`                                                       | Applies supported nested mappings to array `items` type                                                      | Nested mapping runs on item branches.                            |
 | `Collection`                                                | Replaces/creates field type as inline object shape with `properties`, `required`, and `additionalProperties` | Handles `Required`/`Optional` keys and nested field constraints. |
 
 ## Limitations
 
 - Not all Symfony Validator constraints are currently mapped.
+- A constraint is mapped only when its JSON Schema counterpart never rejects a value Symfony accepts; otherwise the schema is left unchanged:
+  - `DateTime` and `Time` do not use the `date-time` and `time` formats, which follow RFC 3339 and require a `T` separator and a time offset that Symfony's formats lack. Their patterns check the shape only, so they also accept values Symfony rejects, such as `2026-13-45 99:99:99`.
+  - `EqualTo` compares loosely (`'1' == '01'`), unlike JSON Schema equality, so only non-numeric strings are mapped. `IdenticalTo` compares strictly and is mapped for any scalar value.
+  - `Unique` is not mapped to `uniqueItems`. Symfony compares items strictly, while JSON Schema treats `1` and `1.0` as equal and ignores object key order, so arrays such as `[1, 1.0]` would pass Symfony and fail the schema.
 - `Collection` fields rely on Symfony's normalized `Required` / `Optional` wrappers.
 - Constraint/type incoherences are exposed in the schema rather than automatically corrected.
 

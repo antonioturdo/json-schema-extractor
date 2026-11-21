@@ -14,6 +14,8 @@ use Zeusi\JsonSchemaExtractor\Enricher\SymfonyValidationEnricher;
 use Zeusi\JsonSchemaExtractor\Model\JsonSchema\Format;
 use Zeusi\JsonSchemaExtractor\Model\Php\ClassDefinition;
 use Zeusi\JsonSchemaExtractor\Model\Type\ArrayType;
+use Zeusi\JsonSchemaExtractor\Model\Type\DecoratedType;
+use Zeusi\JsonSchemaExtractor\Tests\Fixtures\BookingRequest;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\CollectionValidatedObject;
 use Zeusi\JsonSchemaExtractor\Tests\Fixtures\ValidatedObject;
 use Zeusi\JsonSchemaExtractor\Tests\Support\TypeTestHelperTrait;
@@ -102,6 +104,36 @@ class SymfonyValidationEnricherTest extends TestCase
         self::assertNotNull($identifierItemExpr);
         self::assertNotNull($identifierItemExpr->annotations);
         self::assertSame(Format::Uuid->value, $identifierItemExpr->annotations->format);
+    }
+
+    /**
+     * Constraints are mapped only when their JSON Schema counterpart is equivalent.
+     *
+     * A looser schema is a minor flaw, while one that rejects values Symfony Validator
+     * accepts breaks real payloads, so non-equivalent variants leave the schema unchanged.
+     */
+    public function testEnrichMapsConstraintsOnlyWhenEquivalent(): void
+    {
+        $definition = $this->discoverer->discover(BookingRequest::class);
+
+        $this->enrichPhpDocTypes($definition);
+        $this->enricher->enrich($definition, new ExtractionContext(), new EnrichmentRuntime());
+
+        $decorated = fn(string $property): ?DecoratedType => $this->findFirstNonNullDecorated($this->requireProperty($definition, $property)->getType());
+
+        self::assertSame('^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$', $decorated('id')?->constraints->pattern);
+        self::assertSame(Format::Date->value, $decorated('checkIn')?->annotations?->format);
+        self::assertSame('^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$', $decorated('requestedAt')?->constraints->pattern);
+        self::assertSame('^\d{2}:\d{2}:\d{2}$', $decorated('arrivalTime')?->constraints->pattern);
+        self::assertSame('^\d{2}:\d{2}$', $decorated('departureTime')?->constraints->pattern);
+        self::assertSame(['EUR'], $decorated('currency')?->constraints->enum);
+        self::assertSame(['web'], $decorated('channel')?->constraints->enum);
+
+        // Custom formats, loose numeric equality and comparisons with another property have
+        // no equivalent keyword.
+        self::assertNull($decorated('legacyTimestamp')?->constraints->pattern);
+        self::assertSame([], $decorated('apiVersion')?->constraints->enum ?? []);
+        self::assertSame([], $decorated('confirmedCheckIn')?->constraints->enum ?? []);
     }
 
     public function testEnrichMapsCollectionConstraintToObjectShape(): void

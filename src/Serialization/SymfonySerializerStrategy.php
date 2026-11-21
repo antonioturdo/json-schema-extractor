@@ -800,19 +800,8 @@ class SymfonySerializerStrategy implements SerializationStrategyInterface
 
     private function copyTypeConstraints(TypeConstraints $constraints): TypeConstraints
     {
-        return new TypeConstraints(
-            enum: $constraints->enum,
-            minimum: $constraints->minimum,
-            maximum: $constraints->maximum,
-            exclusiveMinimum: $constraints->exclusiveMinimum,
-            exclusiveMaximum: $constraints->exclusiveMaximum,
-            multipleOf: $constraints->multipleOf,
-            minLength: $constraints->minLength,
-            maxLength: $constraints->maxLength,
-            pattern: $constraints->pattern,
-            minItems: $constraints->minItems,
-            maxItems: $constraints->maxItems
-        );
+        // A clone carries every constraint, including ones added to the model later.
+        return clone $constraints;
     }
 
     /**

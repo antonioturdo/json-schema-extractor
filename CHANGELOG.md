@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-11-21
+
+### Added
+
+- `SymfonyValidationEnricher` maps more constraints, each only where the JSON Schema
+  counterpart never rejects a value Symfony accepts: `Ulid` (`pattern`, base32 only),
+  `Date` (`format: date`), `DateTime` (`pattern`, default format only), `Time`
+  (`pattern`), `IdenticalTo` and `EqualTo` (single-value `enum`, without
+  `propertyPath`; `EqualTo` for non-numeric strings only). `DateTime` and `Time`
+  deliberately avoid the RFC 3339 `date-time` and `time` formats, which require a
+  separator and a time offset that Symfony's formats lack.
+
 ## [3.1.0] - 2026-11-14
 
 ### Added
@@ -178,6 +190,7 @@ public function map(SerializedProjection $projection): JsonSchemaInterface
   constraints, serialization projection), with nested objects, enums, unions,
   circular references, and Draft-7 / Draft 2020-12 output.
 
+[3.2.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/3.2.0
 [3.1.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/3.1.0
 [3.0.0]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/3.0.0
 [2.0.1]: https://github.com/antonioturdo/json-schema-extractor/releases/tag/2.0.1
